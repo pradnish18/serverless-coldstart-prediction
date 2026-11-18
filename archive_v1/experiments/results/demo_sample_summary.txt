@@ -1,0 +1,17 @@
+Held-out smoke-test example (actual Region 5 trace data)
+Input: 12 historical five-minute buckets, normalized with training-set statistics.
+Target: whether the immediately following bucket contains a recorded cold-start event.
+Label 1 = event recorded; label 0 = no cold-start event recorded (not proof of a warm invocation).
+Test subset row: 0
+Function key: 49---128---pool22-300-128
+Target bucket index: 7776
+Target interval: day 27, 00:00-00:05
+Actual label: 1
+
+Predictions:
+Logistic Regression: probability=0.7274, predicted=1, correct=True
+Random Forest: probability=0.8247, predicted=1, correct=True
+XGBoost: probability=0.6812, predicted=1, correct=True
+Standard GRU: probability=0.5001, predicted=1, correct=True
+Bidirectional GRU: probability=0.5516, predicted=1, correct=True
+ABiGRU (Proposed): probability=0.5713, predicted=1, correct=True

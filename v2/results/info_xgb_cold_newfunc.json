@@ -1,0 +1,24 @@
+{
+ "best_iter": 110,
+ "params": {
+  "max_depth": 8,
+  "learning_rate": 0.05,
+  "subsample": 0.8,
+  "colsample_bytree": 0.8,
+  "min_child_weight": 5,
+  "reg_lambda": 1.0
+ },
+ "importance": {
+  "hour_sin": 0.04430000111460686,
+  "hour_cos": 0.051899999380111694,
+  "slot": 0.05050000175833702,
+  "pool_cpu": 0.12460000067949295,
+  "pool_mem": 0.1273999959230423,
+  "cluster": 0.0746999979019165,
+  "pool_hour_rate": 0.12639999389648438,
+  "pool_last1": 0.04230000078678131,
+  "pool_last12": 0.11810000240802765,
+  "pool_yday": 0.23970000445842743
+ },
+ "n_features": 10
+}

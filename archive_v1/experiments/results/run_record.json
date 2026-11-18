@@ -1,0 +1,24 @@
+{
+  "run_type": "smoke_test",
+  "completed_utc": "2026-11-12T06:49:27.707554+00:00",
+  "models": [
+    "Logistic Regression",
+    "Random Forest",
+    "XGBoost",
+    "Standard GRU",
+    "Bidirectional GRU",
+    "ABiGRU (Proposed)"
+  ],
+  "split_sizes": {
+    "train": 2048,
+    "val": 2048,
+    "test": 2048
+  },
+  "split_positive_counts": {
+    "train": 1593,
+    "val": 1538,
+    "test": 1555
+  },
+  "note": "Smoke test uses a deterministic subset of real trace-derived samples and one deep-learning epoch.",
+  "full_scale_results": false
+}

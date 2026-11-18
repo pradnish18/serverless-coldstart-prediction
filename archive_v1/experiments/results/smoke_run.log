@@ -1,0 +1,293 @@
+======================================================================
+COLD-START PREDICTION IN SERVERLESS COMPUTING
+Adapted from Saravana Kumar & Selvakumara Samy (2025)
+Dataset: Huawei Cloud Production FaaS Traces - Region 5
+Device: cpu
+Random Seed: 42
+======================================================================
+
+======================================================================
+PHASE 1: LOADING RAW DATASET
+======================================================================
+Loading cold start data:   0%|          | 0/31 [00:00<?, ?it/s]Loading cold start data:  10%|▉         | 3/31 [00:00<00:01, 24.18it/s]Loading cold start data:  19%|█▉        | 6/31 [00:00<00:00, 26.23it/s]Loading cold start data:  29%|██▉       | 9/31 [00:00<00:01, 17.87it/s]Loading cold start data:  39%|███▊      | 12/31 [00:00<00:00, 20.56it/s]Loading cold start data:  48%|████▊     | 15/31 [00:00<00:00, 22.03it/s]Loading cold start data:  58%|█████▊    | 18/31 [00:00<00:00, 23.85it/s]Loading cold start data:  68%|██████▊   | 21/31 [00:00<00:00, 24.38it/s]Loading cold start data:  77%|███████▋  | 24/31 [00:01<00:00, 25.41it/s]Loading cold start data:  87%|████████▋ | 27/31 [00:01<00:00, 25.99it/s]Loading cold start data:  97%|█████████▋| 30/31 [00:01<00:00, 21.87it/s]Loading cold start data: 100%|██████████| 31/31 [00:01<00:00, 22.79it/s]
+
+============================================================
+DATASET SUMMARY
+============================================================
+Total cold start events: 805,745
+Date range: Day 0 to Day 30
+Time range: 0.3s to 2678388.6s
+Unique functions (funcName): 521
+Unique users: 358
+Unique funcIDs: 527
+Unique clusters: 4
+Unique pods: 802828
+
+Cold start cost statistics:
+count    805745.000000
+mean          0.914771
+std           1.796573
+min           0.035300
+25%           0.218093
+50%           0.447381
+75%           0.637511
+max          58.918593
+Name: totalCost_cold_start, dtype: float64
+
+Events per day:
+count       31.000000
+mean     25991.774194
+std        501.853479
+min      25097.000000
+25%      25600.000000
+50%      25909.000000
+75%      26408.000000
+max      26962.000000
+dtype: float64
+============================================================
+
+======================================================================
+PHASE 2: EXPLORATORY DATA ANALYSIS
+======================================================================
+
+Generating dataset visualizations...
+  Saved: /Users/pradnishchintada/Documents/coldstart-problem/experiments/results/visualizations/dataset_analysis.png
+  Saved: /Users/pradnishchintada/Documents/coldstart-problem/experiments/results/visualizations/hourly_pattern.png
+
+--- Feature Statistics ---
+  totalCost_cold_start:
+    Mean: 0.9148s, Median: 0.4474s, Std: 1.7966s
+  podAllocationCost:
+    Mean: 0.1112s, Median: 0.0001s, Std: 1.0721s
+  deployCodeCost:
+    Mean: 0.0753s, Median: 0.0430s, Std: 0.1444s
+  deployDependencyCost:
+    Mean: 0.2594s, Median: 0.0000s, Std: 0.9704s
+  schedulingCost:
+    Mean: 0.4689s, Median: 0.3706s, Std: 0.5336s
+
+--- Missing Values ---
+  No missing values found.
+
+--- Duplicate Records ---
+  Duplicates (same time+func+user): 116
+
+--- Cold Start Patterns ---
+  Avg unique functions per day with cold starts: 471
+  Functions with cold starts across all 31 days: 457
+
+======================================================================
+PHASE 3: FEATURE ENGINEERING
+======================================================================
+  Processing raw data into sequences...
+
+[1/5] Computing bucket aggregates...
+  Selected 5 functions (from 527 total)
+
+[2/5] Building per-function time series...
+Processing functions:   0%|          | 0/5 [00:00<?, ?it/s]Processing functions:  20%|██        | 1/5 [00:00<00:02,  1.50it/s]Processing functions:  40%|████      | 2/5 [00:01<00:01,  1.51it/s]Processing functions:  60%|██████    | 3/5 [00:02<00:01,  1.49it/s]Processing functions:  80%|████████  | 4/5 [00:02<00:00,  1.48it/s]Processing functions: 100%|██████████| 5/5 [00:03<00:00,  1.48it/s]Processing functions: 100%|██████████| 5/5 [00:03<00:00,  1.49it/s]
+  Total samples: 44,580
+  Positive (cold start): 34,419 (77.2%)
+  No cold-start event: 10,161 (22.8%)
+
+[3/5] Splitting data temporally...
+  Train: 34,500 samples (pos: 26,805, 77.7%)
+  Val:   4,320 samples (pos: 3,227, 74.7%)
+  Test:  5,760 samples (pos: 4,387, 76.2%)
+
+[4/5] Normalizing features (fit on train only)...
+
+  Feature dimensions: (34500, 12, 17)
+  Features: ['num_cold_starts', 'avg_cold_start_cost', 'max_cold_start_cost', 'avg_pod_allocation_cost', 'avg_deploy_code_cost', 'avg_deploy_dep_cost', 'avg_scheduling_cost', 'num_unique_clusters', 'num_unique_pods', 'time_since_last_cs', 'hour_sin', 'hour_cos', 'day_cycle_sin', 'day_cycle_cos', 'cs_rate_1h', 'cs_rate_6h', 'consecutive_cs']
+
+======================================================================
+PHASE 4: TRAINING BASELINE MODELS
+======================================================================
+
+--- Training Logistic Regression ---
+
+==================================================
+  Logistic Regression - Evaluation Results
+==================================================
+  Accuracy:  0.8027 (80.27%)
+  Precision: 0.8143 (81.43%)
+  Recall:    0.9588 (95.88%)
+  F1-Score:  0.8807 (88.07%)
+  MCC:       0.3739 (37.39%)
+  ROC-AUC:   0.8254
+  PR-AUC:    0.9313
+  Threshold: 0.20
+
+  Confusion Matrix:
+               Pred=0    Pred=1
+  Actual=0       153       340
+  Actual=1        64      1491
+==================================================
+  Saved: /Users/pradnishchintada/Documents/coldstart-problem/experiments/results/visualizations/confusion_matrix_logistic_regression.png
+
+--- Training Random Forest ---
+
+==================================================
+  Random Forest - Evaluation Results
+==================================================
+  Accuracy:  0.8101 (81.01%)
+  Precision: 0.8362 (83.62%)
+  Recall:    0.9325 (93.25%)
+  F1-Score:  0.8817 (88.17%)
+  MCC:       0.4229 (42.29%)
+  ROC-AUC:   0.8059
+  PR-AUC:    0.9162
+  Threshold: 0.35
+
+  Confusion Matrix:
+               Pred=0    Pred=1
+  Actual=0       209       284
+  Actual=1       105      1450
+==================================================
+  Saved: /Users/pradnishchintada/Documents/coldstart-problem/experiments/results/visualizations/confusion_matrix_random_forest.png
+
+--- Training XGBoost ---
+
+==================================================
+  XGBoost - Evaluation Results
+==================================================
+  Accuracy:  0.8086 (80.86%)
+  Precision: 0.8531 (85.31%)
+  Recall:    0.9035 (90.35%)
+  F1-Score:  0.8776 (87.76%)
+  MCC:       0.4446 (44.46%)
+  ROC-AUC:   0.8097
+  PR-AUC:    0.9185
+  Threshold: 0.40
+
+  Confusion Matrix:
+               Pred=0    Pred=1
+  Actual=0       251       242
+  Actual=1       150      1405
+==================================================
+  Saved: /Users/pradnishchintada/Documents/coldstart-problem/experiments/results/visualizations/confusion_matrix_xgboost.png
+
+======================================================================
+PHASE 5: TRAINING DEEP LEARNING MODELS
+======================================================================
+
+==================================================
+Training: Standard GRU
+==================================================
+  Model parameters: 40,961
+  Training on device: cpu
+  Training for up to 1 epochs (patience=1)...
+  Epoch   1/1 | Train Loss: 0.2870 Acc: 0.7539 | Val Loss: 0.2633 Acc: 0.7490 | Time: 0s
+  Training complete in 0.2s. Best epoch: 1
+  Saved: /Users/pradnishchintada/Documents/coldstart-problem/experiments/results/visualizations/training_curves_standard_gru.png
+
+==================================================
+  Standard GRU - Evaluation Results
+==================================================
+  Accuracy:  0.7910 (79.10%)
+  Precision: 0.8122 (81.22%)
+  Recall:    0.9428 (94.28%)
+  F1-Score:  0.8726 (87.26%)
+  MCC:       0.3373 (33.73%)
+  ROC-AUC:   0.7858
+  PR-AUC:    0.9050
+  Threshold: 0.40
+
+  Confusion Matrix:
+               Pred=0    Pred=1
+  Actual=0       154       339
+  Actual=1        89      1466
+==================================================
+  Saved: /Users/pradnishchintada/Documents/coldstart-problem/experiments/results/visualizations/confusion_matrix_standard_gru.png
+
+==================================================
+Training: Bidirectional GRU
+==================================================
+  Model parameters: 106,497
+  Training on device: cpu
+  Training for up to 1 epochs (patience=1)...
+  Epoch   1/1 | Train Loss: 0.2809 Acc: 0.6646 | Val Loss: 0.2595 Acc: 0.7739 | Time: 0s
+  Training complete in 0.3s. Best epoch: 1
+  Saved: /Users/pradnishchintada/Documents/coldstart-problem/experiments/results/visualizations/training_curves_bidirectional_gru.png
+
+==================================================
+  Bidirectional GRU - Evaluation Results
+==================================================
+  Accuracy:  0.8047 (80.47%)
+  Precision: 0.8210 (82.10%)
+  Recall:    0.9498 (94.98%)
+  F1-Score:  0.8807 (88.07%)
+  MCC:       0.3881 (38.81%)
+  ROC-AUC:   0.7938
+  PR-AUC:    0.9118
+  Threshold: 0.40
+
+  Confusion Matrix:
+               Pred=0    Pred=1
+  Actual=0       171       322
+  Actual=1        78      1477
+==================================================
+  Saved: /Users/pradnishchintada/Documents/coldstart-problem/experiments/results/visualizations/confusion_matrix_bidirectional_gru.png
+
+==================================================
+Training: ABiGRU (Proposed)
+==================================================
+  Model parameters: 127,041
+  Training on device: cpu
+  Training for up to 1 epochs (patience=1)...
+  Epoch   1/1 | Train Loss: 0.2819 Acc: 0.6782 | Val Loss: 0.2669 Acc: 0.7939 | Time: 0s
+  Training complete in 0.3s. Best epoch: 1
+  Saved: /Users/pradnishchintada/Documents/coldstart-problem/experiments/results/visualizations/training_curves_abigru_(proposed).png
+
+==================================================
+  ABiGRU (Proposed) - Evaluation Results
+==================================================
+  Accuracy:  0.7837 (78.37%)
+  Precision: 0.8432 (84.32%)
+  Recall:    0.8785 (87.85%)
+  F1-Score:  0.8605 (86.05%)
+  MCC:       0.3820 (38.20%)
+  ROC-AUC:   0.7877
+  PR-AUC:    0.9108
+  Threshold: 0.40
+
+  Confusion Matrix:
+               Pred=0    Pred=1
+  Actual=0       239       254
+  Actual=1       189      1366
+==================================================
+  Saved: /Users/pradnishchintada/Documents/coldstart-problem/experiments/results/visualizations/confusion_matrix_abigru_(proposed).png
+
+======================================================================
+PHASE 6: MODEL COMPARISON & FINAL RESULTS
+======================================================================
+
+Saved one held-out example input to: /Users/pradnishchintada/Documents/coldstart-problem/experiments/results/demo_input_sequence.csv
+Saved model predictions for that example to: /Users/pradnishchintada/Documents/coldstart-problem/experiments/results/demo_sample_predictions.csv
+Saved example explanation to: /Users/pradnishchintada/Documents/coldstart-problem/experiments/results/demo_sample_summary.txt
+
+----------------------------------------------------------------------------------------
+Model                          Acc     Prec      Rec       F1      MCC  ROC-AUC   PR-AUC
+----------------------------------------------------------------------------------------
+Logistic Regression        0.8027  0.8143  0.9588  0.8807  0.3739  0.8254  0.9313
+Random Forest              0.8101  0.8362  0.9325  0.8817  0.4229  0.8059  0.9162
+XGBoost                    0.8086  0.8531  0.9035  0.8776  0.4446  0.8097  0.9185
+Standard GRU               0.7910  0.8122  0.9428  0.8726  0.3373  0.7858  0.9050
+Bidirectional GRU          0.8047  0.8210  0.9498  0.8807  0.3881  0.7938  0.9118
+ABiGRU (Proposed)          0.7837  0.8432  0.8785  0.8605  0.3820  0.7877  0.9108
+----------------------------------------------------------------------------------------
+  Saved comparison table to /Users/pradnishchintada/Documents/coldstart-problem/experiments/results/comparison_table.txt
+
+Generating comparison visualizations...
+  Saved: /Users/pradnishchintada/Documents/coldstart-problem/experiments/results/visualizations/roc_curves_comparison.png
+  Saved: /Users/pradnishchintada/Documents/coldstart-problem/experiments/results/visualizations/pr_curves_comparison.png
+  Saved: /Users/pradnishchintada/Documents/coldstart-problem/experiments/results/visualizations/model_comparison_bars.png
+  Saved detailed results to /Users/pradnishchintada/Documents/coldstart-problem/experiments/results/experiment_results.json
+
+  Best model by F1-Score: Random Forest (F1=0.8817)
+
+======================================================================
+PIPELINE COMPLETE - Total time: 0.2 minutes
+Results saved to: /Users/pradnishchintada/Documents/coldstart-problem/experiments/results
+Visualizations saved to: /Users/pradnishchintada/Documents/coldstart-problem/experiments/results/visualizations
+======================================================================

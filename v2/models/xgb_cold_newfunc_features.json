@@ -1,0 +1,14 @@
+{
+ "features": [
+  "hour_sin",
+  "hour_cos",
+  "slot",
+  "pool_cpu",
+  "pool_mem",
+  "cluster",
+  "pool_hour_rate",
+  "pool_last1",
+  "pool_last12",
+  "pool_yday"
+ ]
+}

@@ -1,0 +1,22 @@
+{
+ "abigru_s0": 0.4367,
+ "abigru_s1": 0.5104,
+ "abigru_s2": 0.4962,
+ "bigru_s0": 0.518,
+ "bigru_s1": 0.503,
+ "bigru_s2": 0.4675,
+ "gru_s0": 0.4928,
+ "gru_s1": 0.4508,
+ "gru_s2": 0.4948,
+ "mlp_static_s0": 0.5097,
+ "mlp_static_s1": 0.5012,
+ "mlp_static_s2": 0.4539,
+ "xgb_cold_newfunc_s42": 0.0768,
+ "xgb_full_s1": 0.5059,
+ "xgb_full_s2": 0.5046,
+ "xgb_full_s42": 0.5379,
+ "xgb_no_pool_s42": 0.5054,
+ "xgb_no_static_s1": 0.4464,
+ "xgb_no_static_s2": 0.4471,
+ "xgb_no_static_s42": 0.4779
+}

@@ -1,0 +1,20 @@
+# Raw data: download it yourself (see README) - too large for git
+dataset/raw/
+*.zip
+
+# Provider's repository (has its own .git); link to it instead
+_github_repo/
+
+# Rebuildable caches and large prediction arrays
+v2/cache/
+v2/results/*.npz
+v2/results/*.log
+
+# Python / OS / tool junk
+__pycache__/
+*.pyc
+.DS_Store
+.mplconfig/
+.venv/
+venv/
+.ipynb_checkpoints/
