@@ -82,7 +82,7 @@ This is a **binary classification** task (Glossary, Section 9).
 | RQ2 | Does a sequence encoder (GRU / BiGRU / ABiGRU) add value over tabular features? | **Answered (3 seeds):** practically no. ABiGRU beats the no-sequence MLP by 0.0014 F1 (consistent across seeds, but tiny) and only ties XGBoost; GRU and BiGRU do not beat the MLP (Section 8.9). |
 | RQ3 | Do learned models help on hard "reactivation" events? | **Partly:** they rank better (PR-AUC 0.91–0.93 vs 0.76) but the 7-day majority rule has a higher F1 (0.870 vs 0.84–0.86). |
 | RQ4 | Can cold starts of unseen functions be predicted from hardware and pool context alone? | **Answered: no** (F1 0.239, ROC-AUC 0.567). |
-| RQ5 | Can predictions drive a cost-aware pre-warming policy? | **Not answered.** Only a coverage proxy ("cost captured at 2%") was computed. No policy simulator exists. |
+| RQ5 | Can predictions drive a cost-aware pre-warming policy? | **Answered with a simulator** (Section 8.12.3): at about 50 pre-warmed containers per 5-minute bucket, the models avoid 66–67% of cold starts with 6–7% waste, versus 64% / 8% for the best rule and 69% / 59% waste for a 60-minute keep-alive. |
 
 ## 1.7 Expected contributions (honest framing)
 
@@ -767,9 +767,9 @@ Each model independently maps the same inputs to a probability. XGBoost combines
 |---|---|
 | Occurrence forecasting with 7 rules, 4 XGBoost variants, 4 neural models | Residual-on-seasonal-baseline model |
 | Slice evaluation, bootstrap CIs | Multi-task head (event, time-to-next, cost) |
-| Cost-captured proxy metric | Cost-aware pre-warming policy under a budget |
-| | Shared function-embedding model for new functions |
-| | TCN / Transformer comparison, probability calibration |
+| Cost-captured proxy metric; pre-warming simulator with threshold and per-bucket budget policies (`v2/prewarm_sim.py`) | |
+| Rolling-origin evaluation, XGBoost tuning, paired tests (`v2/robustness.py`, `v2/extra_eval.py`) | Shared function-embedding model for new functions |
+| Probability calibration check (`v2/calibration.py`) | TCN / Transformer comparison |
 | | Use of provider's request / time-series tables |
 
 ---
@@ -958,7 +958,77 @@ Static PNG, 200 dpi, light theme; colors from a colorblind-validated categorical
 
 ## 8.11 Not calculated (listed so that nothing is assumed)
 
-Training-set metrics for v2; per-slice confusion matrices; probability calibration; statistical significance tests beyond bootstrap intervals; the paper's baselines rerun on this data; inference latency; a cost-aware pre-warming simulation; any result on an Azure dataset.
+The paper's baselines rerun on this data; inference latency and memory; rolling-origin evaluation of the neural models (only XGBoost and rules were rolled); other Huawei regions; any result on an Azure dataset. (Training-set metrics, per-slice confusion matrices, calibration, paired significance tests and a pre-warming simulation were added on 2026-11-19, Section 8.12.)
+
+## 8.12 Additional evaluations (2026-11-19; no new models)
+
+Full tables: `v2/results/extra_eval.md`, `calibration.md`, `prewarm_sim.md`, `robustness.md`. Main seed of each model (XGBoost seed 42, neural seed 0) unless stated.
+
+### 8.12.1 Training vs validation vs test (overfitting check) and slice confusion matrices
+
+| Model | Train F1 (days 7–23) | Validation F1 | Test F1 |
+|---|---|---|---|
+| XGBoost full | 0.9656 | 0.9399 | 0.9420 |
+| XGBoost no-static | 0.9658 | 0.9393 | 0.9430 |
+| ABiGRU | 0.9592 | 0.9393 | 0.9430 |
+| BiGRU | 0.9594 | 0.9395 | 0.9420 |
+| GRU | 0.9593 | 0.9396 | 0.9417 |
+| MLP | 0.9590 | 0.9390 | 0.9409 |
+| Rule: 7-day majority | 0.9379 | 0.9123 | 0.9194 |
+
+The train–test gap is about 0.017–0.024 F1, and the rule (which learns nothing) shows a similar 0.019 gap, so most of the gap is the later days being slightly harder, not overfitting. Confusion matrices for every slice (main, reactivation, low-history, holdout) are in `extra_eval.md`, Section 1.
+
+### 8.12.2 Paired statistical tests (test set, function-level paired bootstrap, 1,000 resamples)
+
+| Comparison | F1 difference | 95% CI | p |
+|---|---|---|---|
+| XGBoost full − 7-day rule | +0.0226 | [+0.0121, +0.0351] | < 0.001 |
+| ABiGRU − 7-day rule | +0.0236 | [+0.0127, +0.0366] | < 0.001 |
+| MLP − 7-day rule | +0.0215 | [+0.0109, +0.0340] | < 0.001 |
+| ABiGRU − XGBoost full | +0.0010 | [−0.0002, +0.0024] | 0.13 |
+| XGBoost no-static − full | +0.0010 | [−0.0000, +0.0020] | 0.05 |
+| ABiGRU − MLP | +0.0021 | [+0.0008, +0.0037] | < 0.001 |
+| ABiGRU − BiGRU | +0.0010 | [−0.0004, +0.0032] | 0.28 |
+| ABiGRU − GRU | +0.0013 | [−0.0001, +0.0031] | 0.08 |
+| BiGRU − MLP | +0.0011 | [−0.0002, +0.0023] | 0.08 |
+| GRU − MLP | +0.0008 | [+0.0000, +0.0016] | 0.04 |
+
+With 10 comparisons, a Bonferroni-corrected level is 0.005. Only "learned model vs rule" and "ABiGRU vs MLP" pass it. **ABiGRU is not significantly different from XGBoost.** Row-level McNemar tests (also in `extra_eval.md`) are reported for completeness but are optimistic because rows of one function are correlated.
+
+### 8.12.3 Pre-warming simulator (`v2/prewarm_sim.py`, figure `fig7_prewarm_tradeoff.png`)
+
+Replays test days 27–30 for the 385 eligible functions. Before each 5-minute bucket a policy chooses which functions get **one** pre-warmed container; a pre-warm avoids the first cold start of that bucket (saving its latency) or, if no cold start happens, is wasted (one container idles 5 minutes). Assumptions: the container is ready within one bucket; counterfactual effects (a warm container serving later requests) cannot be simulated with event-only data, so avoided counts are conservative. Totals: 82,031 cold starts, 81,939 s of cold-start latency. Ceiling for one container per function-bucket: 70.4% of cold starts, 60.2% of latency.
+
+| Policy | Pre-warms per bucket | Cold starts avoided | Latency saved | Wasted pre-warms | Idle container-hours |
+|---|---|---|---|---|---|
+| No pre-warming | 0 | 0% | 0% | – | 0 |
+| Keep-alive 15 min | 86.2 | 58.6% | 51.6% | 51.5% | 4,263 |
+| Keep-alive 60 min | 119.3 | 68.8% | 58.7% | 58.9% | 6,747 |
+| Rule: same slot yesterday | 50.2 | 63.8% | 53.9% | 9.4% | 454 |
+| Rule: 7-day majority | 49.7 | 64.4% | 54.3% | 7.7% | 366 |
+| XGBoost full @ 0.538 | 50.2 | 66.4% | 55.9% | 5.9% | 283 |
+| ABiGRU @ 0.437 | 51.6 | 67.4% | 56.9% | 7.1% | 350 |
+| MLP @ 0.510 | 50.8 | 66.7% | 56.4% | 6.6% | 320 |
+
+With a fixed budget of N containers per bucket (top-N functions by score), the models and the 7-day vote score are close: at N = 40 they avoid 50.8% (models) vs 49.8% (rule) of cold starts with 9.5% vs 11.3% waste. Threshold policies, which warm a different number of functions in each bucket, sit clearly above every fixed-N budget curve in `fig7`: a fixed N wastes containers in quiet buckets and runs short in busy ones. **Practical reading:** prediction-driven pre-warming reaches nearly the same cold-start reduction as a long keep-alive with about 20 times fewer idle container-hours, and the learned models add 2–3 percentage points over the best rule.
+
+### 8.12.4 Calibration (`v2/calibration.py`)
+
+All learned models are well calibrated on test: expected calibration error 0.0018–0.0031, Brier score 0.0107–0.0113, mean predicted probability 0.130 against an observed rate of 0.130. Isotonic recalibration fitted on validation changes these by at most 0.0013 ECE, so the raw probabilities can be used directly (for example for budgeted pre-warming).
+
+### 8.12.5 Robustness (`v2/robustness.py`)
+
+**Rolling origin** (XGBoost full and rules; three 4-day test windows with expanding training windows):
+
+| Fold | Train | Val | Test | XGBoost F1 | 7-day rule F1 | Gap |
+|---|---|---|---|---|---|---|
+| 1 | 7–15 | 16–18 | 19–22 | 0.9550 | 0.9383 | +0.0166 |
+| 2 | 7–19 | 20–22 | 23–26 | 0.9399 | 0.9127 | +0.0271 |
+| 3 (original) | 7–23 | 24–26 | 27–30 | 0.9420 | 0.9194 | +0.0226 |
+
+The advantage over the rule holds in every window (mean F1 0.9456 vs 0.9235). Neural models were not rolled (about 15 minutes per model per fold).
+
+**XGBoost hyperparameter search** (16 configurations of depth, learning rate and min_child_weight; selected on validation PR-AUC): validation PR-AUC ranged only 0.9862–0.9866. The selected setting (depth 6, learning rate 0.1, min_child_weight 5) scored test F1 0.9429 vs 0.9420 for the default, a +0.0009 difference comparable to seed noise. The default hyperparameters are therefore not a weakness of the results.
 
 ---
 
@@ -1048,9 +1118,11 @@ coldstart-problem/
 │   ├── baseline_eval.py                             early rule-baseline analysis
 │   ├── cache/matrices.npz
 │   ├── make_figures.py                              paper figures -> figures/
-│   ├── figures/  fig1–fig6 (.png)
+│   ├── figures/  fig1–fig7 (.png)
+│   ├── extra_eval.py  calibration.py  prewarm_sim.py  robustness.py   additional evaluations
 │   ├── models/   xgb_*.json, *_features.json, *.pt, thresholds.json      (≈40 MB)
-│   └── results/  preds_*.npz, info_*.json, frames.npz, benchmark.md, final_test_table.txt, multiseed_summary.md, logs
+│   └── results/  preds_*.npz, info_*.json, frames.npz, benchmark.md, final_test_table.txt, multiseed_summary.md,
+│                 extra_eval.md, calibration.md, prewarm_sim.md, robustness.md, logs
 ├── archive_v1/                          OLD v1 PIPELINE (smoke-tested only; reference)
 │   ├── main.py  config/  src/
 │   ├── experiments/results/   (smoke models, 14 charts, tables, logs)
@@ -1084,6 +1156,10 @@ Cleanup performed on 2026-11-19: v1 moved to `archive_v1/`; deleted `.DS_Store` 
 | `v2/save_thresholds.py` | Validation-tuned threshold per saved model | script | preds, frames → `models/thresholds.json` | `evalx.py` | Recommended |
 | `v2/predict.py` | Load a saved model; list models; score one function for one day | `make_scorer`, CLI | `models/*`, cache → printed table | xgboost, torch, `nets.py`, `features.py` | Recommended |
 | `v2/make_figures.py` | Six paper figures | script | preds, frames, info files → `v2/figures/*.png` | matplotlib, `evalx.py` | Optional |
+| `v2/extra_eval.py` | Slice confusion matrices, train/val/test metrics, paired tests | script | preds, frames, saved models → `results/extra_eval.md` | scipy, `nets.py`, xgboost | Optional |
+| `v2/calibration.py` | Brier, ECE, reliability, isotonic check | script | preds, frames → `results/calibration.md` | sklearn | Optional |
+| `v2/prewarm_sim.py` | Pre-warming simulator (policies and per-bucket budgets) | script | preds, frames, cache, thresholds → `results/prewarm_sim.md`, `figures/fig7_prewarm_tradeoff.png` | matplotlib (figure only) | Recommended |
+| `v2/robustness.py` | Rolling-origin evaluation and XGBoost tuning | script | cache → `results/robustness.md` | xgboost | Optional |
 | `v2/baseline_eval.py` | First rule-baseline and slice analysis | script | CSVs → printed tables | sklearn | Optional |
 
 ## 10.3 v1 files (now under `archive_v1/`)
@@ -1154,18 +1230,18 @@ See Section 13.5.
 Main task: +0.023 F1 over the 7-day majority rule (0.9426 mean for XGBoost vs 0.9194). Slices: see Sections 8.4–8.5.
 
 ## 12.5 Limitations
-Single region; event-only data; no warm-start ground truth; one time split; ABiGRU only an adaptation; no hyperparameter search; seed-1 neural checkpoints (and ABiGRU seed 2) not saved; no operational (pre-warming) simulation; cost-capture metric is approximate for rules.
+Single region; event-only data; no warm-start ground truth; neural models evaluated on one time split (XGBoost was also rolled); ABiGRU only an adaptation; neural hyperparameters not tuned (XGBoost tuning showed little sensitivity); the pre-warming simulator cannot model counterfactual effects (a warm container serving later requests); cost-capture metric is approximate for rules.
 
 ## 12.6 Future improvements (proposals, not implemented)
 1. Provider's other tables (request counts, per-function time series — the README lists them) could supply invocation information; **[their contents were not inspected beyond the README]**.
 2. Residual model on top of the seasonal baseline; multi-task heads (occurrence, time to next, cost).
-3. Cost-aware pre-warming with a budget and a simulator.
+3. Cost-aware pre-warming policies that weight functions by expected latency saved (the simulator now exists, Section 8.12.3).
 4. Better new-function modeling (function embeddings, more metadata).
-5. Calibrated probabilities, rolling-origin evaluation, hyperparameter search, other regions.
+5. Other regions; rolling-origin evaluation and tuning of the neural models (done for XGBoost).
 6. Done since: pinned `requirements.txt`, `README.md`, `.gitignore`; repository published at github.com/pradnish18/serverless-coldstart-prediction.
 
 ## 12.7 What remains incomplete
-A pre-warming simulator; the v1 full-scale run (not needed for the benchmark). Multi-seed runs and model saving are complete.
+The v1 full-scale run (not needed for the benchmark). Multi-seed runs, model saving, calibration, statistical tests, rolling-origin evaluation (XGBoost) and the pre-warming simulator are complete.
 
 ---
 
@@ -1218,6 +1294,10 @@ python3 v2/save_thresholds.py      # thresholds → v2/models/thresholds.json
 python3 v2/predict.py --list        # list saved models
 python3 v2/predict.py --model abigru_s0 --function 0 --day 28    # use a saved model
 python3 v2/make_figures.py          # figures -> v2/figures/
+python3 v2/extra_eval.py            # slice confusion matrices, train metrics, paired tests (~3 min)
+python3 v2/calibration.py           # calibration check
+python3 v2/prewarm_sim.py           # pre-warming simulator + fig7
+python3 v2/robustness.py            # rolling-origin evaluation + XGBoost tuning (~5 min)
 ```
 `run_gbdt.py` must run before `report.py` because it writes `frames.npz`. Do **not** use `python3 -I` with these scripts (the isolated mode ignores the script folder and imports fail).
 
@@ -1280,7 +1360,9 @@ Notes: the checkpoints load on CPU by default. `run_deep.py` picks the device au
 |---|---|---|
 | `ModuleNotFoundError: No module named 'data'` | Running with `python3 -I`, or importing from another folder | Run `python3 v2/<script>.py` normally |
 | `Input contains NaN` in `average_precision_score` | NaN pool fields for two functions in the neural pipeline | Already handled in `nets.standardize` (NaN → 0 after standardization) |
-| `IndexError: cannot do a non-empty take` in `metrics` | `nboot=0` | Use `nboot ≥ 2` |
+| `IndexError: cannot do a non-empty take` in `metrics` | `nboot=0` in older versions of `evalx.py` | Fixed: `nboot=0` now returns NaN intervals |
+| `FileNotFoundError: ... v2/cache/matrices.npz` on a fresh clone | `cache/` is not in git and older `data.py` did not create it | Fixed (2026-11-19): `data.py` creates the folder; run `python3 v2/data.py` first |
+| `FileNotFoundError: ... v2/results/frames.npz` when running `report.py` on a fresh clone | Prediction arrays are not in git | Run `python3 v2/run_gbdt.py` (and the neural runs) first |
 | `sed -i` fails on macOS | BSD sed needs `-i ''` | `sed -i '' ...` |
 | MPS device not available | Non-Apple hardware or old torch | The script falls back to CPU (slower) |
 | `InconsistentVersionWarning` on old `.joblib` | Different scikit-learn | Match versions or retrain |

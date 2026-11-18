@@ -64,6 +64,7 @@ def build():
     # function-level hourly rate from training period
     fh = (cnt[:, :STAT_END] > 0).reshape(F, -1, 24, 12).mean((1, 3)).astype(np.float32)
 
+    os.makedirs(os.path.dirname(CACHE), exist_ok=True)   # cache/ is not in git; create it on a fresh clone
     np.savez_compressed(CACHE, cnt=cnt, cost=cost, fids=fids, role=role, hour_rate=hour_rate, fn_hour_rate=fh,
                         meta=meta.values.astype(np.float32), meta_cols=np.array(meta.columns))
     return CACHE

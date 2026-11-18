@@ -26,7 +26,20 @@ Details, slices and confidence intervals: `v2/results/benchmark.md`, `v2/results
 
 ![F1 by model, 3 seeds](v2/figures/fig1_multiseed_f1.png)
 
-More figures in [`v2/figures/`](v2/figures): precision–recall and ROC curves, confusion matrices, feature importance, training curves.
+More figures in [`v2/figures/`](v2/figures): precision–recall and ROC curves, confusion matrices, feature importance, training curves, pre-warming trade-off.
+
+## Pre-warming simulation
+
+`v2/prewarm_sim.py` replays the test days and pre-warms one container per chosen function per 5-minute bucket:
+
+| Policy | Containers per bucket | Cold starts avoided | Wasted pre-warms | Idle container-hours |
+|---|---|---|---|---|
+| Keep-alive 60 min | 119 | 68.8% | 58.9% | 6,747 |
+| Rule: 7-day majority | 50 | 64.4% | 7.7% | 366 |
+| XGBoost | 50 | 66.4% | 5.9% | 283 |
+| ABiGRU | 52 | 67.4% | 7.1% | 350 |
+
+Prediction-driven pre-warming gets close to a long keep-alive's benefit with about 20 times fewer idle container-hours (ceiling: 70.4%). Additional checks (calibration, paired significance tests, rolling-origin evaluation, XGBoost tuning) are summarized in the documentation, Section 8.12.
 
 ## Repository layout
 
@@ -42,6 +55,8 @@ v2/                 current pipeline
   evalx.py, report.py, final_table.py, multiseed.py, save_thresholds.py   evaluation
   predict.py        load a saved model and predict
   make_figures.py   paper figures -> figures/
+  prewarm_sim.py    pre-warming simulator
+  extra_eval.py, calibration.py, robustness.py   additional evaluations
   models/           trained models (XGBoost .json, neural .pt) + thresholds.json
   results/          benchmark tables and training metadata
 archive_v1/         earlier pipeline (smoke-tested only), kept for reference
@@ -86,6 +101,8 @@ python3 v2/report.py                   # -> v2/results/benchmark.md
 python3 v2/multiseed.py                # -> v2/results/multiseed_summary.md
 python3 v2/save_thresholds.py          # -> v2/models/thresholds.json
 python3 v2/make_figures.py             # -> v2/figures/*.png (needs matplotlib)
+python3 v2/prewarm_sim.py              # -> v2/results/prewarm_sim.md, figures/fig7_prewarm_tradeoff.png
+python3 v2/extra_eval.py; python3 v2/calibration.py; python3 v2/robustness.py   # additional evaluations
 ```
 
 Neural training picks the device automatically: NVIDIA GPU (CUDA), else Apple GPU (MPS), else CPU (force one with `COLDSTART_DEVICE=cpu`, `cuda` or `mps`). A BiGRU or ABiGRU run takes about 15 minutes on an Apple Silicon laptop. XGBoost results reproduce exactly; neural results reproduce exactly on the same machine and seed, and may differ slightly on other hardware.
