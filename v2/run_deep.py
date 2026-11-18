@@ -13,7 +13,9 @@ os.makedirs(RES, exist_ok=True); os.makedirs(MODELS, exist_ok=True)
 name, seed = sys.argv[1], int(sys.argv[2])
 EPOCHS, PATIENCE, BS, SAMPLE = (1, 3, 2048, 30_000) if SMOKE else (14, 3, 2048, 700_000)
 torch.manual_seed(seed); np.random.seed(seed)
-dev = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+dev = torch.device(os.environ.get("COLDSTART_DEVICE") or                       # optional override: cpu / cuda / mps
+                   ("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"))
+print(f"device: {dev}", flush=True)
 
 d, ctx = get_ctx()
 full, names = build(ctx, d, "full")

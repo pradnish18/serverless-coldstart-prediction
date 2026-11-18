@@ -59,5 +59,5 @@ Given 12 past five-minute buckets (one hour) for a function/user/pod-pool key, p
 
 | Document | Description |
 |----------|-------------|
-| [`literature_analysis.md`](file:///Users/pradnishchintada/Documents/coldstart-problem/research/literature_analysis.md) | Detailed analysis of the original paper, methodology, results, limitations, and gap analysis |
-| [`algorithm_selection.md`](file:///Users/pradnishchintada/Documents/coldstart-problem/research/algorithm_selection.md) | Algorithm portfolio, feature mapping, problem reformulation, and experimental design |
+| [`literature_analysis.md`](literature_analysis.md) | Detailed analysis of the original paper, methodology, results, limitations, and gap analysis |
+| [`algorithm_selection.md`](algorithm_selection.md) | Algorithm portfolio, feature mapping, problem reformulation, and experimental design |

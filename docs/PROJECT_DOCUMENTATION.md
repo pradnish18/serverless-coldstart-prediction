@@ -526,7 +526,7 @@ Channels 5 and 6 let a 2-hour window see daily and weekly rhythm. The tensor has
 | Early stopping | patience 3 epochs on validation PR-AUC; best weights are restored |
 | LR scheduler | `ReduceLROnPlateau` (mode max, factor 0.5, patience 1) on validation PR-AUC |
 | Dropout | 0.3 between GRU layers and in the head; 0.2 in the static branch |
-| Device | Apple GPU (MPS) when available, else CPU (there is no CUDA branch in this script) |
+| Device | NVIDIA GPU (CUDA) if available, else Apple GPU (MPS), else CPU; override with the environment variable `COLDSTART_DEVICE=cpu|cuda|mps`. The reported runs used MPS. **[CUDA path not tested: no NVIDIA GPU was available.]** |
 | Seed | set by command-line argument |
 | Pretrained weights | none |
 
@@ -887,7 +887,7 @@ TP = predicted yes and a cold start occurred; FP = predicted yes but none occurr
 | ABiGRU | 13 | 142,977 | 0.0234 | 0.9790 | 0.9856 |
 
 * **Training-set classification metrics** (accuracy/F1 on training rows): **[NOT CALCULATED]**. Only training loss (neural) and best-iteration/validation score (XGBoost) were recorded. Because validation and test F1 agree (≈0.939–0.940 vs 0.942–0.943), there is no sign of overfitting to the validation or test period, but a train–test gap analysis was not run.
-* **Per-epoch curves** are stored in `results/info_*_s*.json`; **plots of them were not generated for v2**.
+* **Per-epoch curves** are stored in `results/info_*_s*.json` and plotted in `v2/figures/fig6_training_curves.png` (Section 8.11a).
 
 ## 8.8 v1 smoke results (for the record; not benchmark results)
 
@@ -942,6 +942,19 @@ Purpose: show whether the ≈0.002 F1 differences between learned models are rea
 | Neural training time (seed 0) | MLP ≈ 17 s, GRU ≈ 392 s, BiGRU ≈ 868 s, ABiGRU ≈ 908 s (to epoch 13); up to about 20 min for ABiGRU when the machine was shared | `run_deep_s0.log`, `run_seeds.log`, `run_s0_resave.log` |
 | Epoch time | MLP ≈ 1.5 s, GRU ≈ 30 s, BiGRU ≈ 62 s, ABiGRU ≈ 70 s | `run_deep_s0.log` |
 | Inference latency, memory use | **[NOT CALCULATED]** | |
+
+## 8.11a Figures (v2/figures/, produced by `v2/make_figures.py`)
+
+| File | Shows |
+|---|---|
+| `fig1_multiseed_f1.png` | F1 of each learned model (3 seeds: mean, each seed, min–max) against the 7-day rule, for all test buckets and for reactivation buckets |
+| `fig2_precision_recall.png` | Precision–recall curves of XGBoost, ABiGRU and MLP, with the 7-day rule as a point; all buckets and reactivation buckets |
+| `fig3_roc.png` | ROC curves (false-positive axis zoomed to 0–0.05) for the same models |
+| `fig4_confusion_matrices.png` | Confusion matrices of XGBoost (seed 42) and ABiGRU (seed 0) at their validation thresholds, counts and row shares |
+| `fig5_feature_importance.png` | Top 15 XGBoost features by gain share |
+| `fig6_training_curves.png` | Validation PR-AUC per epoch for the four neural models (seed 0) |
+
+Static PNG, 200 dpi, light theme; colors from a colorblind-validated categorical palette; zoomed axes are stated on each figure. They need `v2/results/frames.npz` and `preds_*.npz`, so on a fresh clone run the training scripts first.
 
 ## 8.11 Not calculated (listed so that nothing is assumed)
 
@@ -1034,6 +1047,8 @@ coldstart-problem/
 │   ├── predict.py                                   load a saved model and predict
 │   ├── baseline_eval.py                             early rule-baseline analysis
 │   ├── cache/matrices.npz
+│   ├── make_figures.py                              paper figures -> figures/
+│   ├── figures/  fig1–fig6 (.png)
 │   ├── models/   xgb_*.json, *_features.json, *.pt, thresholds.json      (≈40 MB)
 │   └── results/  preds_*.npz, info_*.json, frames.npz, benchmark.md, final_test_table.txt, multiseed_summary.md, logs
 ├── archive_v1/                          OLD v1 PIPELINE (smoke-tested only; reference)
@@ -1068,6 +1083,7 @@ Cleanup performed on 2026-11-19: v1 moved to `archive_v1/`; deleted `.DS_Store` 
 | `v2/multiseed.py` | Mean/sd/min–max across seeds | script | preds, frames → `results/multiseed_summary.md` | `evalx.py` | Optional |
 | `v2/save_thresholds.py` | Validation-tuned threshold per saved model | script | preds, frames → `models/thresholds.json` | `evalx.py` | Recommended |
 | `v2/predict.py` | Load a saved model; list models; score one function for one day | `make_scorer`, CLI | `models/*`, cache → printed table | xgboost, torch, `nets.py`, `features.py` | Recommended |
+| `v2/make_figures.py` | Six paper figures | script | preds, frames, info files → `v2/figures/*.png` | matplotlib, `evalx.py` | Optional |
 | `v2/baseline_eval.py` | First rule-baseline and slice analysis | script | CSVs → printed tables | sklearn | Optional |
 
 ## 10.3 v1 files (now under `archive_v1/`)
@@ -1149,7 +1165,7 @@ Single region; event-only data; no warm-start ground truth; one time split; ABiG
 6. Done since: pinned `requirements.txt`, `README.md`, `.gitignore`; repository published at github.com/pradnish18/serverless-coldstart-prediction.
 
 ## 12.7 What remains incomplete
-Figures for v2 results; a pre-warming simulator; the v1 full-scale run (not needed for the benchmark). Multi-seed runs and model saving are complete.
+A pre-warming simulator; the v1 full-scale run (not needed for the benchmark). Multi-seed runs and model saving are complete.
 
 ---
 
@@ -1201,6 +1217,7 @@ python3 v2/multiseed.py             # multi-seed summary → v2/results/multisee
 python3 v2/save_thresholds.py      # thresholds → v2/models/thresholds.json
 python3 v2/predict.py --list        # list saved models
 python3 v2/predict.py --model abigru_s0 --function 0 --day 28    # use a saved model
+python3 v2/make_figures.py          # figures -> v2/figures/
 ```
 `run_gbdt.py` must run before `report.py` because it writes `frames.npz`. Do **not** use `python3 -I` with these scripts (the isolated mode ignores the script folder and imports fail).
 
@@ -1253,7 +1270,7 @@ net, ck = nets.load_checkpoint("v2/models/abigru_s0.pt")                  # ck["
 3. Download the dataset (Section 13.4) and run `python3 v2/data.py` to rebuild the cache; this is required because features are computed from the data.
 4. Use `predict.py`. Optional: copy `v2/results/` to regenerate tables without retraining.
 
-Notes: the checkpoints load on CPU by default. `run_deep.py` uses Apple GPU (MPS) or CPU only; there is no CUDA branch for NVIDIA GPUs. `nets.load_checkpoint` passes `weights_only=False` because the checkpoint stores NumPy arrays; load only checkpoints you trust.
+Notes: the checkpoints load on CPU by default. `run_deep.py` picks the device automatically: NVIDIA GPU (CUDA) if available, else Apple GPU (MPS), else CPU; override with the environment variable `COLDSTART_DEVICE=cpu|cuda|mps`. The CUDA path was not tested here. `nets.load_checkpoint` passes `weights_only=False` because the checkpoint stores NumPy arrays; load only checkpoints you trust.
 
 **Version compatibility (verified problem).** The v1 smoke-test models in `archive_v1/experiments/results/models/` were saved with scikit-learn **1.7.2**, and loading them here under scikit-learn 1.3.2 emits `InconsistentVersionWarning` ("results may be invalid"). They also show that the v1 artifacts were produced on another machine (log paths under a different user's folder) and with Python 3.13 (`__pycache__` files are `cpython-313`). Use identical library versions on both machines, or retrain. `torch.load` also warns about `weights_only` in torch 2.4; when loading your own files you may pass `weights_only=True` for state-dict-only files.
 

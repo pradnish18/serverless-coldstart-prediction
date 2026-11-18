@@ -24,6 +24,10 @@ Full technical documentation, including data, features, models, results and desi
 
 Details, slices and confidence intervals: `v2/results/benchmark.md`, `v2/results/multiseed_summary.md`.
 
+![F1 by model, 3 seeds](v2/figures/fig1_multiseed_f1.png)
+
+More figures in [`v2/figures/`](v2/figures): precision–recall and ROC curves, confusion matrices, feature importance, training curves.
+
 ## Repository layout
 
 ```
@@ -37,6 +41,7 @@ v2/                 current pipeline
   run_deep.py       trains one neural model: python3 v2/run_deep.py <model> <seed>
   evalx.py, report.py, final_table.py, multiseed.py, save_thresholds.py   evaluation
   predict.py        load a saved model and predict
+  make_figures.py   paper figures -> figures/
   models/           trained models (XGBoost .json, neural .pt) + thresholds.json
   results/          benchmark tables and training metadata
 archive_v1/         earlier pipeline (smoke-tested only), kept for reference
@@ -80,9 +85,10 @@ python3 v2/run_deep.py abigru 0        # neural models; also gru, bigru, mlp_sta
 python3 v2/report.py                   # -> v2/results/benchmark.md
 python3 v2/multiseed.py                # -> v2/results/multiseed_summary.md
 python3 v2/save_thresholds.py          # -> v2/models/thresholds.json
+python3 v2/make_figures.py             # -> v2/figures/*.png (needs matplotlib)
 ```
 
-Neural training uses the Apple GPU (MPS) when available, otherwise the CPU. A BiGRU or ABiGRU run takes about 15 minutes on an Apple Silicon laptop. XGBoost results reproduce exactly; neural results reproduce exactly on the same machine and seed, and may differ slightly on other hardware.
+Neural training picks the device automatically: NVIDIA GPU (CUDA), else Apple GPU (MPS), else CPU (force one with `COLDSTART_DEVICE=cpu`, `cuda` or `mps`). A BiGRU or ABiGRU run takes about 15 minutes on an Apple Silicon laptop. XGBoost results reproduce exactly; neural results reproduce exactly on the same machine and seed, and may differ slightly on other hardware.
 
 ## Reference
 
