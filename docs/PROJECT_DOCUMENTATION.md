@@ -17,7 +17,7 @@
 | Is there an older pipeline? | Yes, moved to `archive_v1/` (`main.py`, `src/`, `config/`, its outputs). It was only **smoke-tested** (1 epoch, 2,048 rows, 5 functions). It is not a result, and v2 does not depend on it. |
 | Any pretrained weights? | **None.** Every model starts from random initialization or an empty tree. |
 | Do the models talk to each other? | **No.** Every model is trained and evaluated independently. There is no ensemble or stacking (verified by search, Section 5). |
-| Are trained v2 model files saved? | **Yes**, in `v2/models/` (about 40 MB): 8 XGBoost models (`.json`, plus 4 feature-list files), 7 neural checkpoints (`.pt`, weights + scaler + feature order), and `thresholds.json`. Reloading them reproduces the reported predictions (Section 13.8). |
+| Are trained v2 model files saved? | **Yes**, in `v2/models/` (about 40 MB): 8 XGBoost models (`.json`, plus 4 feature-list files), 12 neural checkpoints (4 models × 3 seeds) (`.pt`, weights + scaler + feature order), and `thresholds.json`. Reloading them reproduces the reported predictions (Section 13.8). |
 | Best headline result | On test days 27–30, learned models reach F1 ≈ 0.941–0.943 (3-seed means), against 0.919 for the best simple rule. XGBoost and ABiGRU are tied at the top; the spread among all learned models is about 0.002 F1. |
 | Biggest open problem | Predicting cold starts of **brand-new functions with no history** is not solved (F1 0.24, ROC-AUC 0.57). |
 
@@ -559,7 +559,7 @@ Channels 5 and 6 let a 2-hour window see daily and weekly rhythm. The tensor has
 
 ### 4.4.5 Evaluation, saved artifacts and use of outputs (neural models)
 * **Validation/testing procedure:** the best epoch (by validation PR-AUC) is restored, predictions are made on `val_main`, `test_main`, `val_hold`, `test_hold`, and saved to `results/preds_<model>_s<seed>.npz`; the threshold is then chosen on validation rows by the evaluator.
-* **Saved artifacts:** predictions (`preds_*.npz`), `info_<model>_s<seed>.json` (training history per epoch, parameter count, best validation PR-AUC) and a checkpoint `v2/models/<model>_s<seed>.pt` containing the weights, the standardization vectors `mu`/`sd`, the 57 feature names in order, the window length, seed, training history and torch version. Checkpoints exist for seed 0 of all four models and seed 2 of MLP, GRU and BiGRU (the other runs finished before saving was added; their predictions are kept). Re-training seed 0 on the same machine reproduced the original predictions exactly (difference 0.0), so the saved seed-0 checkpoints are exactly the models behind the reported seed-0 numbers.
+* **Saved artifacts:** predictions (`preds_*.npz`), `info_<model>_s<seed>.json` (training history per epoch, parameter count, best validation PR-AUC) and a checkpoint `v2/models/<model>_s<seed>.pt` containing the weights, the standardization vectors `mu`/`sd`, the 57 feature names in order, the window length, seed, training history and torch version. Checkpoints exist for all three seeds of all four models (12 files). Runs that originally finished before saving was added were retrained on the same machine with the same seed; every retrained run reproduced its original predictions exactly (difference 0.0), so each saved checkpoint is exactly the model behind the reported numbers.
 * **How output is used:** only by `report.py` / `final_table.py`.
 
 ## 4.5 The v1 models (smoke-trained only)
@@ -1327,10 +1327,10 @@ To **use the saved models without training**, only `python3 v2/data.py` (3 s) is
 | `xgb_no_pool_s42.json` | XGBoost, 51 features | `xgb_no_pool_features.json` |
 | `xgb_cold_newfunc_s42.json` | XGBoost, 10 "cold" features | `xgb_cold_newfunc_features.json` |
 | `abigru_s0.pt`, `gru_s0.pt`, `bigru_s0.pt`, `mlp_static_s0.pt` | Neural checkpoints, seed 0 (exactly the models behind the seed-0 results) | self-contained (weights, `mu`, `sd`, feature order, window) |
-| `gru_s2.pt`, `bigru_s2.pt`, `mlp_static_s2.pt` | Neural checkpoints, seed 2 | self-contained |
+| `*_s1.pt`, `*_s2.pt` for the same four models | Neural checkpoints, seeds 1 and 2 | self-contained |
 | `thresholds.json` | Validation-tuned decision threshold per model (the cold model's threshold is tuned on held-out functions) | — |
 
-Seed-1 neural models and ABiGRU seed 2 finished before saving was added; their predictions are in `results/`, but no model file exists.
+All 12 neural runs (4 models × 3 seeds) have a checkpoint.
 
 **Loading.**
 ```python
@@ -1441,7 +1441,7 @@ CSV (31 days) → data.py → matrices.npz → features.py → frames.py
 | Rules | n/a | n/a | Yes | n/a |
 | XGBoost full / no-static | Yes | 3 | Yes | Yes (all 3 seeds) |
 | XGBoost no-pool / cold | Yes | 1 | Yes | Yes |
-| MLP / GRU / BiGRU / ABiGRU | Yes | 3 | Yes (all seeds) | Seed 0 all; seed 2 for MLP, GRU, BiGRU |
+| MLP / GRU / BiGRU / ABiGRU | Yes | 3 | Yes (all seeds) | Yes (all 3 seeds) |
 | v1 six models (archived) | Smoke only | 1 | Smoke subset only | Yes (smoke weights, in `archive_v1/`) |
 
 ## 14.8 Execution sequence from raw data to final output
