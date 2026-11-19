@@ -948,7 +948,16 @@ TP = predicted yes and a cold start occurred; FP = predicted yes but none occurr
 | ABiGRU | 13 | 142,977 | 0.0234 | 0.9790 | 0.9856 |
 
 * **Training-set classification metrics** (accuracy/F1 on training rows): **[NOT CALCULATED]**. Only training loss (neural) and best-iteration/validation score (XGBoost) were recorded. Because validation and test F1 agree (≈0.939–0.940 vs 0.942–0.943), there is no sign of overfitting to the validation or test period, but a train–test gap analysis was not run.
-* **Per-epoch curves** are stored in `results/info_*_s*.json` and plotted in `v2/figures/fig6_training_curves.png` (Section 8.11).
+* **Per-epoch curves** are stored in `results/info_*_s*.json` and plotted in `v2/figures/fig6_training_curves.png` (seed 0) and `fig8_training_all_seeds.png` (all 12 runs) (Section 8.11).
+* **Training evidence for all 12 neural runs** (144 epochs in total) is collected in **`v2/results/training_report.md`**: epochs run, kept epoch, stopping reason, loss and validation curves, parameters, wall-clock training time, XGBoost tree counts, and SHA-256 fingerprints of every saved model. The console output printed during training is kept in `v2/results/logs/` (local paths removed). `v2/training_report.py` cross-checks the logs, the training records and the epoch history stored inside each checkpoint; all 12 runs agree epoch by epoch.
+
+| Model | Epochs (seeds 0 / 1 / 2) | Kept epoch (seeds 0 / 1 / 2) |
+|---|---|---|
+| MLP | 11 / 8 / 14 | 8 / 5 / 12 |
+| GRU | 13 / 14 / 8 | 10 / 13 / 5 |
+| BiGRU | 14 / 9 / 13 | 13 / 6 / 10 |
+| ABiGRU | 13 / 14 / 13 | 10 / 13 / 10 |
+| **Total** | **144** | |
 
 ## 8.8 v1 smoke results (for the record; not benchmark results)
 
@@ -1005,7 +1014,7 @@ Purpose: show whether the ≈0.002 F1 differences between learned models are rea
 | Additional evaluations | `extra_eval.py` 2 min 53 s (scoring 2.1 M training rows with every saved model); rolling-origin folds 21–36 s each; simulator under 1 min. The XGBoost grid search was not timed | timed during the 2026-11-19 runs |
 | Inference latency, memory use | **[NOT CALCULATED]** | |
 
-## 8.11 Figures (v2/figures/; figures 1–6 from `v2/make_figures.py`, figure 7 from `v2/prewarm_sim.py`)
+## 8.11 Figures (v2/figures/; figures 1–6 from `v2/make_figures.py`, figure 7 from `v2/prewarm_sim.py`, figure 8 from `v2/training_report.py`)
 
 | File | Shows |
 |---|---|
@@ -1016,6 +1025,7 @@ Purpose: show whether the ≈0.002 F1 differences between learned models are rea
 | `fig5_feature_importance.png` | Top 15 XGBoost features by gain share |
 | `fig6_training_curves.png` | Validation PR-AUC per epoch for the four neural models (seed 0) |
 | `fig7_prewarm_tradeoff.png` | Pre-warming simulator: cold starts avoided against containers per bucket, and against the share of wasted pre-warms; threshold and keep-alive policies as markers |
+| `fig8_training_all_seeds.png` | Training loss and validation PR-AUC per epoch for all 12 neural runs (4 models × 3 seeds), kept epoch marked; produced by `v2/training_report.py` |
 
 Static PNG, 200 dpi, light theme; colors from a colorblind-validated categorical palette; zoomed axes are stated on each figure. They need `v2/results/frames.npz` and `preds_*.npz`, so on a fresh clone run the training scripts first.
 
@@ -1207,7 +1217,8 @@ coldstart-problem/
 │   ├── extra_eval.py  calibration.py  prewarm_sim.py  robustness.py   additional evaluations
 │   ├── models/   xgb_*.json, *_features.json, *.pt, thresholds.json      (≈40 MB)
 │   └── results/  preds_*.npz, info_*.json, frames.npz, benchmark.md, final_test_table.txt, multiseed_summary.md,
-│                 extra_eval.md, calibration.md, prewarm_sim.md, robustness.md, logs
+│                 extra_eval.md, calibration.md, prewarm_sim.md, robustness.md, training_report.md,
+│                 logs/ (training console output, local paths removed)
 ├── archive_v1/                          OLD v1 PIPELINE (smoke-tested only; reference)
 │   ├── main.py  config/  src/
 │   ├── experiments/results/   (smoke models, 14 charts, tables, logs)
@@ -1245,6 +1256,7 @@ Cleanup performed on 2026-11-19: v1 moved to `archive_v1/`; deleted `.DS_Store` 
 | `v2/calibration.py` | Brier, ECE, reliability, isotonic check | script | preds, frames → `results/calibration.md` | sklearn | Optional |
 | `v2/prewarm_sim.py` | Pre-warming simulator (policies and per-bucket budgets) | script | preds, frames, cache, thresholds → `results/prewarm_sim.md`, `figures/fig7_prewarm_tradeoff.png` | matplotlib (figure only) | Recommended |
 | `v2/robustness.py` | Rolling-origin evaluation and XGBoost tuning | script | cache → `results/robustness.md` | xgboost | Optional |
+| `v2/training_report.py` | Training evidence: all runs, epochs, times, fingerprints; cross-checks logs, records and checkpoints | script | `info_*.json`, `models/*`, `results/logs/` → `results/training_report.md`, `figures/fig8_training_all_seeds.png` | torch, matplotlib | Recommended |
 | `v2/baseline_eval.py` | First rule-baseline and slice analysis | script | CSVs → printed tables | sklearn | Optional |
 
 ## 10.3 v1 files (now under `archive_v1/`)
@@ -1390,6 +1402,8 @@ python3 v2/extra_eval.py            # slice confusion matrices, train metrics, p
 python3 v2/calibration.py           # calibration check
 python3 v2/prewarm_sim.py           # pre-warming simulator + fig7
 python3 v2/robustness.py            # rolling-origin evaluation + XGBoost tuning (~5 min)
+python3 v2/training_report.py       # training evidence report + fig8 (~10 s)
+COLDSTART_SMOKE=1 python3 v2/run_deep.py abigru 0   # live training demo: 3 short epochs (~1 min), writes only to the system temp folder
 ```
 `run_gbdt.py` must run before `report.py` because it writes `frames.npz`. Do **not** use `python3 -I` with these scripts (the isolated mode ignores the script folder and imports fail).
 

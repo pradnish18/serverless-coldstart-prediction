@@ -1,17 +1,20 @@
 """Hybrid sequence models: (24-bucket window incl. seasonally aligned channels) encoder + tabular context.
 usage: python run_deep.py <model> <seed>      model in mlp_static|gru|bigru|abigru
 Saves predictions (results/preds_*.npz), training info (results/info_*.json) AND the trained model (models/<model>_s<seed>.pt).
-Set COLDSTART_SMOKE=1 for a tiny test run that writes to a temp folder."""
+Set COLDSTART_SMOKE=1 for a tiny 3-epoch demo run (30,000 rows per epoch) that writes to <system temp>/coldstart_smoke/, never to v2/results or v2/models."""
 import sys, os, time, json, numpy as np, torch, torch.nn as nn, torch.nn.functional as Fn
 from sklearn.metrics import average_precision_score
 from frames import *
 import nets
 HERE = os.path.dirname(os.path.abspath(__file__))
 SMOKE = os.environ.get("COLDSTART_SMOKE") == "1"
-RES = os.environ.get("COLDSTART_OUT", os.path.join(HERE, "results")); MODELS = os.environ.get("COLDSTART_MODELS", os.path.join(HERE, "models"))
+# a smoke test never touches the real results: by default it writes to the system temp folder
+import tempfile
+_base = os.path.join(tempfile.gettempdir(), "coldstart_smoke") if SMOKE else HERE
+RES = os.environ.get("COLDSTART_OUT", os.path.join(_base, "results")); MODELS = os.environ.get("COLDSTART_MODELS", os.path.join(_base, "models"))
 os.makedirs(RES, exist_ok=True); os.makedirs(MODELS, exist_ok=True)
 name, seed = sys.argv[1], int(sys.argv[2])
-EPOCHS, PATIENCE, BS, SAMPLE = (1, 3, 2048, 30_000) if SMOKE else (14, 3, 2048, 700_000)
+EPOCHS, PATIENCE, BS, SAMPLE = (3, 3, 2048, 30_000) if SMOKE else (14, 3, 2048, 700_000)   # smoke: 3 short epochs for a live demo
 torch.manual_seed(seed); np.random.seed(seed)
 dev = torch.device(os.environ.get("COLDSTART_DEVICE") or                       # optional override: cpu / cuda / mps
                    ("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"))
@@ -51,4 +54,5 @@ np.savez_compressed(f"{RES}/preds_{tag}{name}_s{seed}.npz", **{f"{name}_s{seed}_
 json.dump({"history": hist, "best_val_pr_auc": best, "params": sum(p.numel() for p in net.parameters()), "epochs": len(hist)},
           open(f"{RES}/info_{tag}{name}_s{seed}.json", "w"), indent=1)
 nets.save_checkpoint(f"{MODELS}/{tag}{name}_s{seed}.pt", net, name, len(names), mu, sd, names, seed, hist)
-print("DONE", name, seed, "model saved ->", f"{MODELS}/{tag}{name}_s{seed}.pt", flush=True)
+_out = f"{MODELS}/{tag}{name}_s{seed}.pt"
+print("DONE", name, seed, "model saved ->", os.path.relpath(_out, os.path.dirname(HERE)) if _out.startswith(os.path.dirname(HERE)) else _out, flush=True)

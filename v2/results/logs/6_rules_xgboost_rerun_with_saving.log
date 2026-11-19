@@ -1,0 +1,5 @@
+xgb_full: best_iter=356 time=36s
+xgb_no_static: best_iter=356 time=31s
+xgb_no_pool: best_iter=219 time=18s
+xgb_cold_newfunc: best_iter=110 time=10s
+DONE
