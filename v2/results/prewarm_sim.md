@@ -16,6 +16,8 @@ One pre-warm = one container kept ready for one 5-minute bucket; it avoids at mo
 | xgb_full @ threshold 0.538 | 50.2 | 54,432 | 66.4% | 45,782 | 55.9% | 3,397 | 5.9% | 283 |
 | abigru @ threshold 0.437 | 51.6 | 55,263 | 67.4% | 46,658 | 56.9% | 4,204 | 7.1% | 350 |
 | mlp_static @ threshold 0.510 | 50.8 | 54,704 | 66.7% | 46,245 | 56.4% | 3,837 | 6.6% | 320 |
+| hybrid_histogram (ATC'20, fallback 4 h) | 125.6 | 57,535 | 70.1% | 48,978 | 59.8% | 87,159 | 60.2% | 7,263 |
+| hybrid_histogram (fallback 60 min) | 125.1 | 57,519 | 70.1% | 48,975 | 59.8% | 86,641 | 60.1% | 7,220 |
 
 ## Fixed budget: N pre-warmed containers per 5-minute bucket (top-N functions by score)
 
@@ -30,5 +32,23 @@ One pre-warm = one container kept ready for one 5-minute bucket; it avoids at mo
 | 60 | 63.8% / 24.3% | 63.8% / 24.3% | 62.9% / 25.3% |
 | 80 | 68.6% / 38.9% | 68.6% / 38.9% | 67.8% / 39.6% |
 | 100 | 70.2% / 50.0% | 70.3% / 50.0% | 69.3% / 50.7% |
+| 125 | 70.3% / 59.9% | 70.4% / 59.9% | 69.3% / 60.5% |
+
+## Policies as classifiers (test days 27-30)
+
+| policy | MAIN all: precision / recall / F1 / MCC | MAIN reactivation: precision / recall / F1 / MCC |
+|---|---|---|
+| keepalive_15min | 0.485 / 0.833 / 0.613 / 0.566 | 0.000 / 0.000 / 0.000 / 0.000 |
+| keepalive_60min | 0.411 / 0.978 / 0.579 / 0.559 | 0.000 / 0.000 / 0.000 / 0.000 |
+| rule_same_slot_yesterday | 0.906 / 0.907 / 0.906 / 0.892 | 0.763 / 0.848 / 0.803 / 0.804 |
+| rule_majority_7d | 0.923 / 0.916 / 0.919 / 0.907 | 0.900 / 0.842 / 0.870 / 0.870 |
+| xgb_full @ threshold 0.538 | 0.941 / 0.943 / 0.942 / 0.933 | 0.981 / 0.837 / 0.903 / 0.906 |
+| abigru @ threshold 0.437 | 0.929 / 0.957 / 0.943 / 0.934 | 0.971 / 0.831 / 0.896 / 0.898 |
+| mlp_static @ threshold 0.510 | 0.934 / 0.947 / 0.941 / 0.932 | 0.985 / 0.823 / 0.897 / 0.900 |
+| hybrid_histogram (ATC'20, fallback 4 h) | 0.398 / 0.996 / 0.568 / 0.553 | 0.023 / 0.880 / 0.045 / 0.127 |
+| hybrid_histogram (fallback 60 min) | 0.399 / 0.996 / 0.570 / 0.554 | 0.023 / 0.868 / 0.045 / 0.126 |
+
+Hybrid-histogram branch use (functions; a function can use several over time): fixed keep-alive 4, histogram 124, out-of-range forecaster 260.
+
 
 Average number of functions with a cold start per bucket: 50.1.

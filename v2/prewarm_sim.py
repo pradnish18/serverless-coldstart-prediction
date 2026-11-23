@@ -22,6 +22,7 @@ Outputs: v2/results/prewarm_sim.md, v2/figures/fig7_prewarm_tradeoff.png
 import os, sys, json, numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from data import load
+from hh_policy import hh_warm, RANGE
 HERE = os.path.dirname(os.path.abspath(__file__)); RES = os.path.join(HERE, "results")
 S = np.load(f"{RES}/frames.npz"); d = load()
 mt = S["test_main_role"] == 0
@@ -67,9 +68,15 @@ pol = {"no_prewarm": np.zeros_like(y), "keepalive_15min": recent(3), "keepalive_
        "xgb_full @ threshold %.3f" % thr["xgb_full_s42"]: SC["xgb_full"] >= thr["xgb_full_s42"],
        "abigru @ threshold %.3f" % thr["abigru_s0"]: SC["abigru"] >= thr["abigru_s0"],
        "mlp_static @ threshold %.3f" % thr["mlp_static_s0"]: SC["mlp_static"] >= thr["mlp_static_s0"]}
+# hybrid-histogram baseline (Shahrad et al., ATC 2020), adapted; see hh_policy.py
+hh, hh_branch = hh_warm(ev, f, t, fallback_ka=RANGE)
+hh60, _ = hh_warm(ev, f, t, fallback_ka=12)
+pol["hybrid_histogram (ATC'20, fallback 4 h)"] = hh
+pol["hybrid_histogram (fallback 60 min)"] = hh60
+fn_branch = {b: len(np.unique(f[hh_branch == b])) for b in (0, 1, 2)}
 res = {k: evaluate(v) for k, v in pol.items()}
 
-BUDGETS = [5, 10, 20, 30, 40, 50, 60, 80, 100]
+BUDGETS = [5, 10, 20, 30, 40, 50, 60, 80, 100, 125]
 curves = {"xgb_full": SC["xgb_full"], "abigru": SC["abigru"], "rule votes (7-day)": slot_votes + 0.01 * yday}
 bud = {name: [evaluate(topn(sc, n)) for n in BUDGETS] for name, sc in curves.items()}
 
@@ -85,6 +92,21 @@ out += ["\n## Fixed budget: N pre-warmed containers per 5-minute bucket (top-N f
         "| N per bucket | " + " | ".join(f"{c}: % cold starts avoided / % wasted" for c in curves) + " |", "|---|" + "---|" * len(curves)]
 for i, n in enumerate(BUDGETS):
     out.append(f"| {n} | " + " | ".join(f"{bud[c][i]['avoided_pct']:.1f}% / {bud[c][i]['waste_pct']:.1f}%" for c in curves) + " |")
+# classification view of the binary policies (same rows as the benchmark's MAIN slice)
+def cls(pred, m):
+    p, yy = pred[m], y[m]; tp = (p & yy).sum(); fp = (p & ~yy).sum(); fn_ = (~p & yy).sum(); tn = (~p & ~yy).sum()
+    pr = tp / max(tp + fp, 1); rc = tp / max(tp + fn_, 1); f1 = 2 * pr * rc / max(pr + rc, 1e-9)
+    mcc = (tp * tn - fp * fn_) / max(np.sqrt(float(tp + fp) * (tp + fn_) * (tn + fp) * (tn + fn_)), 1e-9)
+    return pr, rc, f1, mcc
+react = S["test_main_roll12"][mt] == 0
+out += ["\n## Policies as classifiers (test days 27-30)\n",
+        "| policy | MAIN all: precision / recall / F1 / MCC | MAIN reactivation: precision / recall / F1 / MCC |", "|---|---|---|"]
+for k, v in pol.items():
+    if k == "no_prewarm": continue
+    a, r_ = cls(v, np.ones_like(y)), cls(v, react)
+    out.append(f"| {k} | {a[0]:.3f} / {a[1]:.3f} / {a[2]:.3f} / {a[3]:.3f} | {r_[0]:.3f} / {r_[1]:.3f} / {r_[2]:.3f} / {r_[3]:.3f} |")
+out += ["\nHybrid-histogram branch use (functions; a function can use several over time): fixed keep-alive %d, "
+        "histogram %d, out-of-range forecaster %d.\n" % (fn_branch[0], fn_branch[1], fn_branch[2])]
 out += ["\nAverage number of functions with a cold start per bucket: %.1f.\n" % (y.sum() / n_buckets)]
 open(f"{RES}/prewarm_sim.md", "w").write("\n".join(out)); print("\n".join(out))
 
@@ -97,7 +119,8 @@ try:
         ax[1].plot([b["waste_pct"] for b in bud[c]], [b["avoided_pct"] for b in bud[c]], st, label=c, ms=4)
     # threshold policies (adaptive number of containers per bucket) as single points; keep-alive in neutral grey
     pts = [("keepalive_15min", "keep-alive 15 min", "x", "0.35"), ("keepalive_60min", "keep-alive 60 min", "P", "0.35"),
-           ("rule_majority_7d", "rule 7-day majority @ 0/1", "D", "C2")]
+           ("rule_majority_7d", "rule 7-day majority @ 0/1", "D", "C2"),
+           ("hybrid_histogram (ATC'20, fallback 4 h)", "hybrid histogram (ATC'20)", "v", "C3")]
     pts += [(k, k.split(" @")[0] + " @ val threshold", mk, c) for k, mk, c in
             ((next(x for x in res if x.startswith("xgb_full")), "*", "C0"), (next(x for x in res if x.startswith("abigru")), "*", "C1"))]
     for k, lab, mk, c in pts:

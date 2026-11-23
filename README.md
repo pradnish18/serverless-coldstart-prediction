@@ -35,11 +35,12 @@ More figures in [`v2/figures/`](v2/figures): precision–recall and ROC curves, 
 | Policy | Containers per bucket | Cold starts avoided | Wasted pre-warms | Idle container-hours |
 |---|---|---|---|---|
 | Keep-alive 60 min | 119 | 68.8% | 58.9% | 6,747 |
+| Hybrid histogram (Azure, ATC'20; `v2/hh_policy.py`) | 126 | 70.1% | 60.2% | 7,263 |
 | Rule: 7-day majority | 50 | 64.4% | 7.7% | 366 |
 | XGBoost | 50 | 66.4% | 5.9% | 283 |
 | ABiGRU | 52 | 67.4% | 7.1% | 350 |
 
-Prediction-driven pre-warming gets close to a long keep-alive's benefit with about 20 times fewer idle container-hours (ceiling: 70.4%). Additional checks (calibration, paired significance tests, rolling-origin evaluation, XGBoost tuning) are summarized in the documentation, Section 8.12.
+Prediction-driven pre-warming gets close to a long keep-alive's or the hybrid-histogram policy's benefit with about 20–25 times fewer idle container-hours (ceiling: 70.4%). Additional checks (calibration, paired significance tests, rolling-origin evaluation, XGBoost tuning) are summarized in the documentation, Section 8.12.
 
 ## Repository layout
 
