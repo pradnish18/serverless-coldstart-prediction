@@ -40,7 +40,7 @@ More figures in [`v2/figures/`](v2/figures): precision–recall and ROC curves, 
 | XGBoost | 50 | 66.4% | 5.9% | 283 |
 | ABiGRU | 52 | 67.4% | 7.1% | 350 |
 
-Prediction-driven pre-warming gets close to a long keep-alive's or the hybrid-histogram policy's benefit with about 20–25 times fewer idle container-hours (ceiling: 70.4%). Additional checks (calibration, paired significance tests, rolling-origin evaluation, XGBoost tuning) are summarized in the documentation, Section 8.12.
+Prediction-driven pre-warming gets close to a long keep-alive's or the hybrid-histogram policy's benefit with about 20–25 times fewer idle container-hours (ceiling: 70.4%). The hybrid histogram is adapted to this event-only trace (idle time = gap between cold-start buckets, 5-minute bins, simple forecaster instead of ARIMA; see `v2/hh_policy.py` and documentation Section 7.10). Additional checks (calibration, paired significance tests, rolling-origin evaluation, XGBoost tuning) are summarized in the documentation, Section 8.12.
 
 ## Repository layout
 
@@ -57,10 +57,13 @@ v2/                 current pipeline
   predict.py        load a saved model and predict
   make_figures.py   paper figures -> figures/
   prewarm_sim.py    pre-warming simulator
+  hh_policy.py      hybrid-histogram (Azure, ATC'20) baseline used by the simulator
+  region_prep.py    aggregate another Huawei region's zip into a cache (CS_REGION=<n>)
   extra_eval.py, calibration.py, robustness.py   additional evaluations
   training_report.py   training evidence report + fig8
   models/           trained models (XGBoost .json, neural .pt) + thresholds.json
   results/          benchmark tables, training records (info_*.json), training_report.md, logs/
+report_overleaf/    IEEE-style report: Overleaf zip (main.tex + figures) and compiled PDF
 archive_v1/         earlier pipeline (smoke-tested only), kept for reference
 docs/               full documentation
 research/           notes on the reference paper and design
@@ -94,6 +97,8 @@ pip install -r requirements.txt
 ```bash
 python3 v2/data.py
 ```
+
+Other regions (optional, not evaluated yet): `python3 v2/region_prep.py <1-5> <path/to/R<n>.zip>` aggregates the zip day by day (no extraction) and builds `v2/cache/matrices_R<n>.npz`; set `CS_REGION=<n>` to use it. All reported results are Region 5.
 
 ## Use the trained models (no training needed)
 

@@ -1,3 +1,5 @@
+> **Note.** Analysis of the reference paper. The implementation described in Section 6 is the v1 adaptation; the current pipeline (`v2/`) is documented in [`../docs/PROJECT_DOCUMENTATION.md`](../docs/PROJECT_DOCUMENTATION.md).
+
 # Literature Analysis: Cold-Start Prediction in Serverless Computing
 
 ## 1. Problem Statement

@@ -1,3 +1,5 @@
+> **Historical (v1, superseded).** This audit covers the archived v1 pipeline only. The current project is `v2/`; see [`../docs/PROJECT_DOCUMENTATION.md`](../docs/PROJECT_DOCUMENTATION.md) and [`../README.md`](../README.md).
+
 # Implementation Status
 
 **Audit date:** 2026-11-12  

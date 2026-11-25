@@ -2,7 +2,7 @@
 
 **Project:** Forecasting function cold-start events on the Huawei Cloud Public Trace 2025 (Region 5)
 **Reference paper:** N. Saravana Kumar and S. Selvakumara Samy, *Cold Start Prediction and Provisioning Optimization in Serverless Computing Using Deep Learning*, Concurrency and Computation: Practice and Experience, 2025; 37:e8392 (the "ODL-CSP / ABiGRU" paper)
-**Documentation basis:** the project folder at `coldstart-problem/`, inspected on 2026-11-18 and updated on 2026-11-19 (pre-warming simulator, calibration, statistical tests, robustness checks, all checkpoints saved). Every number in this document was either read from a saved artifact or computed from the saved predictions by scripts in `v2/`. Anything that could not be verified is marked **[NOT VERIFIED]**; anything that was never computed is marked **[NOT CALCULATED]**.
+**Documentation basis:** the project folder at `coldstart-problem/`, inspected on 2026-11-18 and updated on 2026-11-19 (pre-warming simulator, calibration, statistical tests, robustness checks, all checkpoints saved) and on 2026-11-23 (hybrid-histogram baseline from Azure, ATC'20; region-aware data loading; IEEE report draft). **The v2 pipeline is the current project; `archive_v1/` is kept only for history.** Every number in this document was either read from a saved artifact or computed from the saved predictions by scripts in `v2/`. Anything that could not be verified is marked **[NOT VERIFIED]**; anything that was never computed is marked **[NOT CALCULATED]**.
 
 > **How to read this document.** Sections 1–2 explain the problem and the data for a newcomer. Sections 3–7 explain the system. Section 8 holds all results. Section 9 is a glossary. Sections 10–13 are the code map, rationale, conclusions and reproduction guide. Section 14 collects the summary tables and diagrams. A one-page "status at a glance" is below so that nothing important is hidden deep in the text.
 
@@ -19,7 +19,9 @@
 | Do the models talk to each other? | **No.** Every model is trained and evaluated independently. There is no ensemble or stacking (verified by search, Section 5). |
 | Are trained v2 model files saved? | **Yes**, in `v2/models/` (about 40 MB): 8 XGBoost models (`.json`, plus 4 feature-list files), 12 neural checkpoints (4 models × 3 seeds) (`.pt`, weights + scaler + feature order), and `thresholds.json`. Reloading them reproduces the reported predictions (Section 13.8). |
 | Best headline result | On test days 27–30, learned models reach F1 ≈ 0.941–0.943 (3-seed means), against 0.919 for the best simple rule (significant, p < 0.001). XGBoost and ABiGRU are tied at the top (difference not significant, p = 0.13); the spread among all learned models is about 0.002 F1. |
-| Does it help in practice? | **Yes, in simulation.** Pre-warming the functions the models flag avoids about 67% of cold starts with 6–7% wasted containers, against 64% for the best rule and 69% with 59% waste (about 20 times more idle container-hours) for a 60-minute keep-alive (Sections 7.10, 8.12.3). |
+| Does it help in practice? | **Yes, in simulation.** Pre-warming the functions the models flag avoids about 67% of cold starts with 6–7% wasted containers, against 64% for the best rule, 69% with 59% waste for a 60-minute keep-alive and 70% with 60% waste for the hybrid-histogram policy of Azure Functions (both use about 20–25 times more idle container-hours) (Sections 7.10, 8.12.3). |
+| Is there a comparison with an industry pre-warming policy? | Yes (added 2026-11-23). `v2/hh_policy.py` adapts the **hybrid-histogram** policy (Shahrad et al., USENIX ATC 2020) to this event-only trace; it avoids 70.1% of cold starts but pre-warms about 126 containers per bucket and wastes 60.2% (7,263 idle container-hours). The adaptation is described in Section 7.10. |
+| Can it run on other Huawei regions? | The code can: `CS_REGION=<1-5>` and `v2/region_prep.py` aggregate a region's zip day by day (Section 2.14a). **No result for regions 1–4 exists yet**; all reported numbers are Region 5. |
 | Are the results robust? | Yes: the advantage over the rule holds in 3 rolling test windows; XGBoost tuning changes F1 by only +0.0009; all models are well calibrated (ECE ≤ 0.003); overfitting is small (Section 8.12). |
 | Where is it published? | GitHub: `pradnish18/serverless-coldstart-prediction` (code, saved models, results, documentation; the raw dataset is downloaded separately). |
 | Biggest open problem | Predicting cold starts of **brand-new functions with no history** is not solved (F1 0.24, ROC-AUC 0.57). |
@@ -85,7 +87,7 @@ This is a **binary classification** task (Glossary, Section 9).
 | RQ2 | Does a sequence encoder (GRU / BiGRU / ABiGRU) add value over tabular features? | **Answered (3 seeds):** practically no. ABiGRU beats the no-sequence MLP by 0.0014 F1 (consistent across seeds, but tiny) and only ties XGBoost; GRU and BiGRU do not beat the MLP (Section 8.9). |
 | RQ3 | Do learned models help on hard "reactivation" events? | **Partly:** they rank better (PR-AUC 0.91–0.93 vs 0.76) but the 7-day majority rule has a higher F1 (0.870 vs 0.84–0.86). |
 | RQ4 | Can cold starts of unseen functions be predicted from hardware and pool context alone? | **Answered: no** (F1 0.239, ROC-AUC 0.567). |
-| RQ5 | Can predictions drive a cost-aware pre-warming policy? | **Answered with a simulator** (Section 8.12.3): at about 50 pre-warmed containers per 5-minute bucket, the models avoid 66–67% of cold starts with 6–7% waste, versus 64% / 8% for the best rule and 69% / 59% waste for a 60-minute keep-alive. |
+| RQ5 | Can predictions drive a cost-aware pre-warming policy? | **Answered with a simulator** (Section 8.12.3): at about 50 pre-warmed containers per 5-minute bucket, the models avoid 66–67% of cold starts with 6–7% waste, versus 64% / 8% for the best rule, 69% / 59% for a 60-minute keep-alive and 70% / 60% for the hybrid-histogram policy. |
 
 ## 1.7 Expected contributions (honest framing)
 
@@ -93,7 +95,7 @@ This is a **binary classification** task (Glossary, Section 9).
 * Evidence that, on this data, a simple "same time yesterday / last week" rule is already very strong, so published accuracy numbers on other data should be read with that baseline in mind.
 * Evidence that model architecture (ABiGRU vs GRU vs XGBoost) matters little here compared with the seasonal features.
 * An honest negative result on new-function prediction.
-* A pre-warming simulation showing what the predictions are worth operationally: near keep-alive benefit with about 20 times fewer idle container-hours.
+* A pre-warming simulation showing what the predictions are worth operationally: near keep-alive and hybrid-histogram benefit with about 20–25 times fewer idle container-hours.
 * Supporting evidence: paired significance tests, calibration analysis, rolling-origin evaluation and a hyperparameter sensitivity check.
 
 It is **not** a claim of a new state-of-the-art architecture.
@@ -133,6 +135,7 @@ Because of these points we do **not** treat the paper's 90.36% test accuracy as 
 | **Huawei Cloud Public Trace 2025 — Region 5 cold starts** (31 daily CSV files) | **Yes, the only dataset used for modeling** | Source of all training, validation and test data |
 | Reference paper's AWS Lambda data (10,000 rows) | **No** — not available in the project | Described in the paper only |
 | An Azure dataset | **No** — no Azure dataset exists in the project or the Downloads folder (searched). Compatibility could not be assessed. | — |
+| Huawei Regions 1–4 cold starts (`R1.zip`–`R4.zip` in the project root, git-ignored; each holds `day_XX.csv` files) | **No results yet** | The loader supports them (Section 2.14a); not trained or evaluated |
 | Huawei requests table, time-series table, trigger-type table | **No** — described by the provider's README but not downloaded into this project | Possible future data (Section 12.6). **[NOT VERIFIED beyond the README text]** |
 
 ## 2.2 Source and location
@@ -198,7 +201,7 @@ A function is identified by *funcName + userID + pool name*. This follows the pr
 * `cnt[f, b]` = number of cold-start rows in that function-bucket.
 * `cost[f, b]` = sum of `totalCost_cold_start` in that function-bucket.
 
-Saved with metadata in `v2/cache/matrices.npz` (about 2.4 MB).
+Saved with metadata in `v2/cache/matrices.npz` (about 2.4 MB; other regions use `matrices_R<n>.npz`). Since 2026-11-23 the cache is built from per-day aggregates: `data.aggregate()` reduces each day's CSV to per-(function, bucket, cluster) sums (count, cost, dependency flag, code/scheduling/allocation cost), and `build()` combines them. The Region 5 cache rebuilt this way is identical to the earlier one (805,745 events; roles 385 / 96 / 46).
 
 ## 2.8 Function roles (how functions are grouped)
 
@@ -257,7 +260,7 @@ Total: 3+3+1+3+12+12+2+5+1+4+9+1+1 = **57**. The names are in this order in the 
 
 ### Known small inconsistencies (disclosed)
 * `pool_yday` includes the function's own event of the same slot yesterday (a legitimate past value), while `pool_last1` and `pool_last12` exclude the function itself. The inconsistency is small and affects only the pool features.
-* The comment at `v2/data.py` line 28 still says "computed ONLY from the training period (b < TRAIN_END)", but the code uses days 0–6 (`STAT_END = 7*PD`). The code, not the comment, is correct.
+* The old comment in `v2/data.py` claiming static stats come from the training period was replaced (2026-11-23): the code uses days 0–6 only (`STAT_END = 7*PD`); the role (slice membership) uses days 0–23 counts but is never a feature.
 * `data.py` has a `user` column in the metadata that is **not** used as a feature.
 
 ## 2.12 Normalization / transformations
@@ -268,7 +271,7 @@ Total: 3+3+1+3+12+12+2+5+1+4+9+1+1 = **57**. The names are in this order in the 
 
 ## 2.13 Feature selection
 
-No automated feature selection or dimensionality reduction was applied. Instead, **ablations** remove groups to measure their value (Section 8.6): `xgb_no_static` (removes groups 11–13), `xgb_no_pool` (removes groups 3–4), and `xgb_cold_newfunc` (keeps only groups 1–4).
+No automated feature selection or dimensionality reduction was applied. Instead, **ablations** remove groups to measure their value (Section 8.6): `xgb_no_static` (removes groups 11–13), `xgb_no_pool` (removes groups 3–4 and the two `pool_` hardware columns of group 2; 51 features left), and `xgb_cold_newfunc` (keeps only groups 1–4).
 
 ## 2.14 Leakage controls (why each exists)
 
@@ -279,6 +282,12 @@ No automated feature selection or dimensionality reduction was applied. Instead,
 | Pool statistics from held-out functions | Pool profile and live pool load are computed from non-holdout functions only. |
 | Threshold tuned on test | Threshold is chosen on validation data (Section 8.1). |
 | Scaler seeing test data | Standardization uses training rows only. |
+
+## 2.14a Region-aware loading (added 2026-11-23)
+
+* `CS_REGION` (environment variable, default `5`) selects the Huawei region. Region 5 keeps the cache name `matrices.npz`; other regions use `matrices_R<n>.npz` and a per-day folder `v2/cache/agg_R<n>/`.
+* `python3 v2/region_prep.py <region> [zip]` reads a region's zip **without extracting it**, aggregates one day at a time (so large regions fit in memory), writes `agg_R<n>/day_XX.pkl`, skips days already done (resumable; `PREP_BUDGET` seconds limits one run) and then builds the region cache.
+* Only the code path exists for regions 1–4; they have not been modeled, so every result in this document is Region 5. Function counts, roles and thresholds would differ per region.
 
 ---
 
@@ -384,7 +393,9 @@ No automated feature selection or dimensionality reduction was applied. Instead,
 | Attention layer | `v2/nets.py: Attention` (copied from the v1 class so that v2 is self-contained) | Additive attention used by v2's ABiGRU | hidden states | context vector, weights |
 | Extra evaluation | `v2/extra_eval.py` | Slice confusion matrices, train/val/test metrics, paired bootstrap and McNemar tests | preds, frames, saved models | `results/extra_eval.md` |
 | Calibration | `v2/calibration.py` | Brier score, ECE, reliability table, isotonic check | preds, frames | `results/calibration.md` |
-| **Pre-warming simulator** | `v2/prewarm_sim.py` | Turns predictions into pre-warming decisions; compares keep-alive, rule, threshold and fixed-budget policies | preds, frames, cache, `models/thresholds.json` | `results/prewarm_sim.md`, `figures/fig7_prewarm_tradeoff.png` |
+| **Hybrid-histogram policy** | `v2/hh_policy.py` | Causal adaptation of the Azure hybrid-histogram keep-alive/pre-warm policy (`hh_warm`); an industry baseline for the simulator | event matrix, (f, t) rows | boolean warm decision per row |
+| **Region preparation** | `v2/region_prep.py` | Aggregates one region's zip day by day into `cache/agg_R<n>/` and builds its cache | `R<n>.zip` | `agg_R<n>/*.pkl`, `matrices_R<n>.npz` |
+| **Pre-warming simulator** | `v2/prewarm_sim.py` | Turns predictions into pre-warming decisions; compares keep-alive, hybrid-histogram, rule, threshold and fixed-budget policies | preds, frames, cache, `models/thresholds.json` | `results/prewarm_sim.md`, `figures/fig7_prewarm_tradeoff.png` |
 | Robustness | `v2/robustness.py` | Rolling-origin evaluation and XGBoost hyperparameter search | cache | `results/robustness.md` |
 | Figures | `v2/make_figures.py` | Figures 1–6 for the paper (figure 7 comes from the simulator) | preds, frames, info files | `figures/fig1–6` |
 
@@ -415,7 +426,7 @@ The `threshold` is chosen **once per model and slice on the validation rows** to
 | v2 | Score: pool hour rate | Yes | n/a | No | used only for the unseen-function comparison |
 | v2 | XGBoost full (57 features) | Yes | **Trained**, 3 seeds | No | |
 | v2 | XGBoost no-static (46) | Yes | **Trained**, 3 seeds | No | ablation |
-| v2 | XGBoost no-pool (53) | Yes | **Trained**, 1 seed | No | ablation |
+| v2 | XGBoost no-pool (51) | Yes | **Trained**, 1 seed | No | ablation |
 | v2 | XGBoost cold-newfunc (10) | Yes | **Trained**, 1 seed | No | unseen-function test |
 | v2 | MLP (static features only) | Yes | **Trained**, 3 seeds | No | |
 | v2 | GRU | Yes | **Trained**, 3 seeds | No | |
@@ -822,14 +833,17 @@ Each model independently maps the same inputs to a probability. XGBoost combines
 |---|---|
 | No pre-warming | never |
 | Keep-alive 15 / 60 min | a cold start happened in the last 3 / 12 buckets (what platforms do today with longer keep-alive) |
+| Hybrid histogram (Azure, ATC'20) | `L` = last cold-start bucket before *t*, gap `g = t − L`; warm iff `pw ≤ g ≤ ka_end`, where the window comes from the function's own gap histogram (see below) |
 | Rule: same slot yesterday | a cold start in bucket *t* − 288 |
 | Rule: 7-day majority | cold starts in this slot on at least 4 of the last 7 days |
 | Model @ threshold | model probability ≥ its validation-tuned threshold (`models/thresholds.json`) |
 | Fixed budget N | the N highest-scoring functions in every bucket |
 
+**The hybrid-histogram baseline (`v2/hh_policy.py`).** Shahrad et al., *Serverless in the Wild* (USENIX ATC 2020) keep a histogram of idle times per application (1-minute bins, 4-hour range). If the histogram is representative (coefficient of variation of bin counts > 2) the container is unloaded after use, pre-warmed at the 5th percentile of idle times (minus 10%) and kept until the 99th percentile (plus 10%); if many idle times fall outside the range an ARIMA forecast sets the window (85% / 115% of the prediction); otherwise a fixed keep-alive of the full range is used. Adaptations for this trace, all stated in the code: (1) the trace holds only cold starts, so the "idle time" is the gap between consecutive buckets that contain a cold start, not between invocations; (2) bins are 5-minute buckets and the range is 48 buckets (4 h); (3) the ARIMA branch is replaced by the median of the last 5 out-of-range gaps (statsmodels is not in the pipeline); (4) strictly causal: parameters used after event *E[i]* are computed from gaps that ended at or before *E[i]*. Two variants are simulated: fallback keep-alive 4 h (as in the paper) and 60 min. Branch use over the test period: fixed keep-alive 4 functions, histogram 124, out-of-range forecaster 260. Because the window it opens is long, it behaves like a keep-alive: recall 0.996 but precision 0.398 (F1 0.568).
+
 **How the models contribute.** Each model's saved test probabilities are the only input that differs between model policies, so the simulator compares models by their operational value, not just by F1.
 
-**Main result** (full table in Section 8.12.3): at about 50 pre-warms per bucket, ABiGRU avoids 67.4% and XGBoost 66.4% of cold starts with 7.1% / 5.9% waste; the 7-day rule avoids 64.4% with 7.7% waste; a 60-minute keep-alive avoids 68.8% but wastes 58.9% (6,747 idle container-hours against about 300). The ceiling for one container per function-bucket is 70.4% of cold starts.
+**Main result** (full table in Section 8.12.3): at about 50 pre-warms per bucket, ABiGRU avoids 67.4% and XGBoost 66.4% of cold starts with 7.1% / 5.9% waste; the 7-day rule avoids 64.4% with 7.7% waste; a 60-minute keep-alive avoids 68.8% but wastes 58.9% (6,747 idle container-hours against about 300), and the hybrid histogram avoids 70.1% but wastes 60.2% (7,263 idle container-hours, about 126 containers per bucket). The ceiling for one container per function-bucket is 70.4% of cold starts.
 
 **Assumptions and limits.** A container started at the end of bucket *t* − 1 is ready in bucket *t* (the mean cold start is about 0.9 s). Because the trace contains only cold starts, the simulator cannot model a pre-warmed container also serving later requests, or requests routed to another cluster, so the avoided counts are conservative. The platform's own keep-alive is not changed. These results are an offline estimate, not a measurement on a live platform.
 
@@ -892,7 +906,7 @@ Bootstrap 95% F1 intervals (`v2/results/benchmark.md`): ABiGRU [0.926, 0.960], X
 | Rule 7-day majority | 52,864 | 4,389 | 4,875 | 381,392 |
 | Rule same slot yesterday | 52,373 | 5,442 | 5,366 | 380,339 |
 
-TP = predicted yes and a cold start occurred; FP = predicted yes but none occurred; FN = missed cold start; TN = correctly predicted none. Confusion matrices for the slices were **[NOT CALCULATED]**.
+TP = predicted yes and a cold start occurred; FP = predicted yes but none occurred; FN = missed cold start; TN = correctly predicted none. Confusion matrices for the slices (reactivation, low-history, holdout) are in `v2/results/extra_eval.md`, Section 1 (see Section 8.12.1).
 
 ## 8.4 Hard slices (test days 27–30)
 
@@ -947,7 +961,7 @@ TP = predicted yes and a cold start occurred; FP = predicted yes but none occurr
 | BiGRU | 14 | 130,625 | 0.0234 | 0.9785 | 0.9852 |
 | ABiGRU | 13 | 142,977 | 0.0234 | 0.9790 | 0.9856 |
 
-* **Training-set classification metrics** (accuracy/F1 on training rows): **[NOT CALCULATED]**. Only training loss (neural) and best-iteration/validation score (XGBoost) were recorded. Because validation and test F1 agree (≈0.939–0.940 vs 0.942–0.943), there is no sign of overfitting to the validation or test period, but a train–test gap analysis was not run.
+* **Training-set classification metrics** (accuracy/F1 on training rows) were added on 2026-11-19 by `v2/extra_eval.py` (Section 8.12.1): train F1 0.959–0.966, validation 0.939–0.940, test 0.941–0.943. The rule, which learns nothing, shows a similar train–test gap (0.019), so the gap reflects harder later days rather than overfitting.
 * **Per-epoch curves** are stored in `results/info_*_s*.json` and plotted in `v2/figures/fig6_training_curves.png` (seed 0) and `fig8_training_all_seeds.png` (all 12 runs) (Section 8.11).
 * **Training evidence for all 12 neural runs** (144 epochs in total) is collected in **`v2/results/training_report.md`**: epochs run, kept epoch, stopping reason, loss and validation curves, parameters, wall-clock training time, XGBoost tree counts, and SHA-256 fingerprints of every saved model. The console output printed during training is kept in `v2/results/logs/` (local paths removed). `v2/training_report.py` cross-checks the logs, the training records and the epoch history stored inside each checkpoint; all 12 runs agree epoch by epoch.
 
@@ -1073,13 +1087,15 @@ Replays test days 27–30 for the 385 eligible functions. Before each 5-minute b
 | No pre-warming | 0 | 0% | 0% | – | 0 |
 | Keep-alive 15 min | 86.2 | 58.6% | 51.6% | 51.5% | 4,263 |
 | Keep-alive 60 min | 119.3 | 68.8% | 58.7% | 58.9% | 6,747 |
+| Hybrid histogram (ATC'20, fallback 4 h) | 125.6 | 70.1% | 59.8% | 60.2% | 7,263 |
+| Hybrid histogram (fallback 60 min) | 125.1 | 70.1% | 59.8% | 60.1% | 7,220 |
 | Rule: same slot yesterday | 50.2 | 63.8% | 53.9% | 9.4% | 454 |
 | Rule: 7-day majority | 49.7 | 64.4% | 54.3% | 7.7% | 366 |
 | XGBoost full @ 0.538 | 50.2 | 66.4% | 55.9% | 5.9% | 283 |
 | ABiGRU @ 0.437 | 51.6 | 67.4% | 56.9% | 7.1% | 350 |
 | MLP @ 0.510 | 50.8 | 66.7% | 56.4% | 6.6% | 320 |
 
-With a fixed budget of N containers per bucket (top-N functions by score), the models and the 7-day vote score are close: at N = 40 they avoid 50.8% (models) vs 49.8% (rule) of cold starts with 9.5% vs 11.3% waste. Threshold policies, which warm a different number of functions in each bucket, sit clearly above every fixed-N budget curve in `fig7`: a fixed N wastes containers in quiet buckets and runs short in busy ones. **Practical reading:** prediction-driven pre-warming reaches nearly the same cold-start reduction as a long keep-alive with about 20 times fewer idle container-hours, and the learned models add 2–3 percentage points over the best rule.
+With a fixed budget of N containers per bucket (top-N functions by score), the models and the 7-day vote score are close: at N = 40 they avoid 50.8% (models) vs 49.8% (rule) of cold starts with 9.5% vs 11.3% waste. Threshold policies, which warm a different number of functions in each bucket, sit clearly above every fixed-N budget curve in `fig7`: a fixed N wastes containers in quiet buckets and runs short in busy ones. The fixed-budget table now goes up to N = 125, where the models reach 70.3–70.4% (the ceiling). **Practical reading:** prediction-driven pre-warming reaches nearly the same cold-start reduction as a long keep-alive or the hybrid-histogram policy (1.4–3.7 points fewer avoided) with about 20–25 times fewer idle container-hours (6,397–6,980 fewer), and the learned models add 2–3 percentage points over the best rule. As classifiers on the main slice, the 60-minute keep-alive and the hybrid histogram have recall 0.98–0.996 but precision 0.40–0.41 (F1 0.57–0.58) against 0.94 for the models (the 15-minute keep-alive: precision 0.485, recall 0.833, F1 0.613); on reactivation buckets the hybrid histogram's precision is 0.023 and keep-alive never fires (it needs an event in the last hour), so neither can target the rare events. The simulator uses the main seed of each model (XGBoost 42, neural seed 0).
 
 ### 8.12.4 Calibration (`v2/calibration.py`)
 
@@ -1105,7 +1121,7 @@ The five neural runs that had finished before model saving was added (GRU, BiGRU
 
 ## 8.13 Not calculated (listed so that nothing is assumed)
 
-The paper's baselines rerun on this data; inference latency and memory; rolling-origin evaluation and tuning of the neural models (only XGBoost and the rules were rolled and tuned); other Huawei regions; a live (non-simulated) pre-warming test; any result on an Azure dataset. Training-set metrics, per-slice confusion matrices, calibration, paired significance tests and the pre-warming simulation were added on 2026-11-19 (Section 8.12).
+The paper's baselines rerun on this data; inference latency and memory; rolling-origin evaluation and tuning of the neural models (only XGBoost and the rules were rolled and tuned); results on other Huawei regions (the loader exists, Section 2.14a); the hybrid-histogram policy with a real ARIMA branch; a live (non-simulated) pre-warming test; any result on an Azure dataset. Training-set metrics, per-slice confusion matrices, calibration, paired significance tests and the pre-warming simulation were added on 2026-11-19 (Section 8.12).
 
 
 ---
@@ -1174,6 +1190,7 @@ Format: **Term** — general definition. *In this project.* Example.
 * **Smoke test** — a tiny run that only checks that code executes. *v1 results.*
 * **Pre-warming / provisioned concurrency** — creating containers before demand arrives. *The intended use of the forecast; simulated offline in `prewarm_sim.py`, not deployed on a live platform.*
 * **Pre-warming simulator** — a program that replays historical data and applies a pre-warming policy. *`v2/prewarm_sim.py`; counts avoided cold starts, saved latency and wasted pre-warms.* Example: "ABiGRU @ threshold avoids 67.4% of cold starts".
+* **Hybrid histogram policy** — Azure Functions' pre-warm/keep-alive policy (Shahrad et al., ATC 2020) that learns each application's idle-time histogram. *`v2/hh_policy.py`, adapted to cold-start gaps in 5-minute buckets.*
 * **Keep-alive** — keeping a container alive for a fixed time after use. *Baseline policies keep-alive 15 min and 60 min.*
 * **Pre-warming policy** — the rule deciding which functions get a container in each bucket. *Keep-alive, rules, model @ threshold, fixed budget.*
 * **Threshold policy vs fixed budget** — a threshold policy warms every function whose probability is high enough (the number varies per bucket); a fixed budget warms exactly N functions per bucket. *Threshold policies dominate in `fig7`.*
@@ -1211,10 +1228,12 @@ coldstart-problem/
 │   ├── evalx.py  report.py  final_table.py  multiseed.py  save_thresholds.py
 │   ├── predict.py                                   load a saved model and predict
 │   ├── baseline_eval.py                             early rule-baseline analysis
-│   ├── cache/matrices.npz
+│   ├── cache/matrices.npz, agg_R5/                  (git-ignored; matrices_R<n>.npz and agg_R<n>/ for other regions)
 │   ├── make_figures.py                              paper figures -> figures/
-│   ├── figures/  fig1–fig7 (.png)
+│   ├── figures/  fig1–fig8 (.png)
 │   ├── extra_eval.py  calibration.py  prewarm_sim.py  robustness.py   additional evaluations
+│   ├── hh_policy.py                                 hybrid-histogram baseline (Azure, ATC'20)
+│   ├── region_prep.py                               aggregate another region's zip, build its cache
 │   ├── models/   xgb_*.json, *_features.json, *.pt, thresholds.json      (≈40 MB)
 │   └── results/  preds_*.npz, info_*.json, frames.npz, benchmark.md, final_test_table.txt, multiseed_summary.md,
 │                 extra_eval.md, calibration.md, prewarm_sim.md, robustness.md, training_report.md,
@@ -1228,6 +1247,8 @@ coldstart-problem/
 ├── _github_repo/                        provider's data-release repo (README, papers, demo notebooks)
 ├── docs/PROJECT_DOCUMENTATION.md        this document
 ├── requirements.txt                     pinned versions (v1's old list: archive_v1/requirements_v1.txt)
+├── R1.zip … R4.zip                      raw data of Huawei regions 1–4 (git-ignored, not modeled yet)
+├── report_overleaf/                     IEEE-style report: Overleaf project zip (main.tex + figures) and compiled PDF; not tracked in git
 ├── README.md                            quick start
 └── .gitignore                           excludes raw data, caches, prediction arrays, logs, _github_repo/
 ```
@@ -1238,7 +1259,7 @@ Cleanup performed on 2026-11-19: v1 moved to `archive_v1/`; deleted `.DS_Store` 
 
 | File | Purpose | Main functions | Input → Output | Depends on | Essential? |
 |---|---|---|---|---|---|
-| `v2/data.py` | Build matrices, static stats, roles | `build()`, `load()` | CSVs → `cache/matrices.npz` | pandas, numpy | **Yes** |
+| `v2/data.py` | Build matrices, static stats, roles; per-day aggregation; `CS_REGION` switch | `aggregate()`, `raw_files()`, `build()`, `load()` | CSVs or `agg_R<n>/*.pkl` → `cache/matrices.npz` | pandas, numpy | **Yes** |
 | `v2/features.py` | Features | `Ctx`, `make()` | matrices + (f,t) rows → X | `data.py` | **Yes** |
 | `v2/frames.py` | Split definitions and frame builder | `get_ctx`, `frame_defs`, `build` | → dict of arrays | `data.py`, `features.py` | **Yes** |
 | `v2/run_gbdt.py` | Rules + 4 XGBoost; writes `frames.npz` side-file | script | frames → `preds_gbdt.npz`, `info_xgb_*.json`, `frames.npz`, log | xgboost | **Yes** |
@@ -1257,6 +1278,8 @@ Cleanup performed on 2026-11-19: v1 moved to `archive_v1/`; deleted `.DS_Store` 
 | `v2/prewarm_sim.py` | Pre-warming simulator (policies and per-bucket budgets) | script | preds, frames, cache, thresholds → `results/prewarm_sim.md`, `figures/fig7_prewarm_tradeoff.png` | matplotlib (figure only) | Recommended |
 | `v2/robustness.py` | Rolling-origin evaluation and XGBoost tuning | script | cache → `results/robustness.md` | xgboost | Optional |
 | `v2/training_report.py` | Training evidence: all runs, epochs, times, fingerprints; cross-checks logs, records and checkpoints | script | `info_*.json`, `models/*`, `results/logs/` → `results/training_report.md`, `figures/fig8_training_all_seeds.png` | torch, matplotlib | Recommended |
+| `v2/hh_policy.py` | Hybrid-histogram warm/cold decisions per (function, bucket) | `hh_warm`, `_params` | event matrix, query rows → bool warm, branch id | numpy | Recommended |
+| `v2/region_prep.py` | Aggregate a region zip day by day, build `matrices_R<n>.npz` | script `python3 v2/region_prep.py <region> [zip]` | `R<n>.zip` → `cache/agg_R<n>/`, cache | `data.py`, pandas | Optional |
 | `v2/baseline_eval.py` | First rule-baseline and slice analysis | script | CSVs → printed tables | sklearn | Optional |
 
 ## 10.3 v1 files (now under `archive_v1/`)
@@ -1302,6 +1325,7 @@ See Section 13.5.
 | **Slices + cluster bootstrap** | Averages hide the hard cases; rows within a function are not independent | Small positive counts in some slices |
 | **Model order** | Rules → trees → networks: increasing complexity, so each level must justify itself | — |
 | **No model interconnection** | The goal was a fair comparison, not a combined system | An ensemble might add a little accuracy; not tried |
+| **Hybrid histogram as the industry baseline** | The standard published pre-warming policy (Azure); makes the cost comparison meaningful | Adapted to event-only data (cold-start gaps, no ARIMA), so it is a faithful-in-spirit, not exact, reproduction |
 | **Pre-warming simulator with one container per function-bucket** | Simplest policy that event-only data can score honestly; makes model comparisons operational | Counterfactual effects (a warm container serving later requests) cannot be simulated |
 | **Function-level paired bootstrap for significance** | Rows of one function are correlated; resampling whole functions keeps that structure | Few functions in some slices → wide intervals |
 | **Calibration check before using probabilities for budgets** | Budget policies rank by probability | — (models were already calibrated) |
@@ -1316,7 +1340,7 @@ See Section 13.5.
 * A working, leakage-audited, vectorized pipeline that produces a full benchmark in minutes.
 * Trained and evaluated 8 learned model variants plus 6 rule baselines on 443,520 test rows, with 3 seeds for the main models.
 * Saved every trained model (8 XGBoost, 12 neural) with a loader (`predict.py`) that works on a fresh clone.
-* Measured the operational value of the forecasts with a pre-warming simulator, and checked the conclusions with significance tests, calibration, rolling-origin evaluation and a tuning study.
+* Measured the operational value of the forecasts with a pre-warming simulator (including a hybrid-histogram baseline), and checked the conclusions with significance tests, calibration, rolling-origin evaluation and a tuning study.
 
 ## 12.2 What the trained models contribute
 * They improve over the best rule on the main task by about 2.4 F1 points (0.942–0.943 vs 0.919), about 2.6 MCC points (0.933 vs 0.907), and a large PR-AUC margin (0.987–0.989 vs 0.856).
@@ -1331,18 +1355,18 @@ See Section 13.5.
 * **Operationally:** prediction-driven pre-warming reaches 66–67% avoided cold starts (ceiling 70.4%) with 6–7% waste, close to a 60-minute keep-alive's 68.8% but with about 20 times fewer idle container-hours.
 
 ## 12.4 Improvements over baselines
-Main task: +0.023 F1 over the 7-day majority rule (0.9426 mean for XGBoost vs 0.9194; p < 0.001), consistent across 3 rolling windows (+0.017 to +0.027). Pre-warming: +2.0 to +3.0 points of avoided cold starts over the rule; against a 60-minute keep-alive, 1.4–2.4 points fewer avoided but 6,397–6,464 fewer idle container-hours. Slices: Sections 8.4–8.5.
+Main task: +0.023 F1 over the 7-day majority rule (0.9426 mean for XGBoost vs 0.9194; p < 0.001), consistent across 3 rolling windows (+0.017 to +0.027). Pre-warming: +2.0 to +3.0 points of avoided cold starts over the rule; against a 60-minute keep-alive, 1.4–2.4 points fewer avoided but 6,397–6,464 fewer idle container-hours; against the hybrid histogram, 2.7–3.7 points fewer avoided but 6,913–6,980 fewer idle container-hours. Slices: Sections 8.4–8.5.
 
 ## 12.5 Limitations
-Single region; event-only data; no warm-start ground truth; neural models evaluated on one time split (XGBoost was also rolled); ABiGRU only an adaptation; neural hyperparameters not tuned (XGBoost tuning showed little sensitivity); the pre-warming simulator cannot model counterfactual effects (a warm container serving later requests); cost-capture metric is approximate for rules.
+Single region modeled (Region 5; code for the others exists but is unused); event-only data; no warm-start ground truth; neural models evaluated on one time split (XGBoost was also rolled); ABiGRU only an adaptation; neural hyperparameters not tuned (XGBoost tuning showed little sensitivity); the pre-warming simulator cannot model counterfactual effects (a warm container serving later requests); cost-capture metric is approximate for rules.
 
 ## 12.6 Future improvements (proposals, not implemented)
 1. Provider's other tables (request counts, per-function time series — the README lists them) could supply invocation information; **[their contents were not inspected beyond the README]**.
 2. Residual model on top of the seasonal baseline; multi-task heads (occurrence, time to next, cost).
 3. Cost-aware pre-warming policies that weight functions by expected latency saved (the simulator now exists, Section 8.12.3).
 4. Better new-function modeling (function embeddings, more metadata).
-5. Other regions; rolling-origin evaluation and tuning of the neural models (done for XGBoost).
-6. Done since: pinned `requirements.txt`, `README.md`, `.gitignore`; repository published at github.com/pradnish18/serverless-coldstart-prediction.
+5. Run regions 1–4 (`region_prep.py` is ready); rolling-origin evaluation and tuning of the neural models (done for XGBoost).
+6. Done since: pinned `requirements.txt`, `README.md`, `.gitignore`; repository published at github.com/pradnish18/serverless-coldstart-prediction; hybrid-histogram baseline and region-aware loading (2026-11-23, branch `hybrid-histogram-baseline`); IEEE paper draft in `report_overleaf/`.
 
 ## 12.7 What remains incomplete
 The v1 full-scale run (not needed for the benchmark). Multi-seed runs, model saving, calibration, statistical tests, rolling-origin evaluation (XGBoost) and the pre-warming simulator are complete.
@@ -1384,7 +1408,8 @@ pip install -r requirements.txt
 
 ## 13.5 Commands (run from the project root; scripts add their own folder to the import path)
 ```bash
-python3 v2/data.py                  # builds v2/cache/matrices.npz (~3 s)
+python3 v2/data.py                  # builds v2/cache/matrices.npz (~3 s from per-day aggregates; first build reads the CSVs)
+python3 v2/region_prep.py 1 R1.zip  # optional: another region (default zip search: dataset/raw/R<n>*.zip); then set CS_REGION=1 for the other scripts
 python3 v2/run_gbdt.py              # rules + 4 XGBoost; writes frames.npz, preds_gbdt.npz (~1–2 min)
 python3 v2/run_xgb_seeds.py         # optional: seeds 1 and 2
 python3 v2/run_deep.py abigru 0     # one neural model, one seed; saves v2/models/abigru_s0.pt (MLP ≈ 20 s, GRU ≈ 7 min, BiGRU/ABiGRU ≈ 15 min on MPS)
@@ -1400,7 +1425,7 @@ python3 v2/predict.py --model abigru_s0 --function 0 --day 28    # use a saved m
 python3 v2/make_figures.py          # figures -> v2/figures/
 python3 v2/extra_eval.py            # slice confusion matrices, train metrics, paired tests (~3 min)
 python3 v2/calibration.py           # calibration check
-python3 v2/prewarm_sim.py           # pre-warming simulator + fig7
+python3 v2/prewarm_sim.py           # pre-warming simulator (incl. hybrid histogram) + fig7
 python3 v2/robustness.py            # rolling-origin evaluation + XGBoost tuning (~5 min)
 python3 v2/training_report.py       # training evidence report + fig8 (~10 s)
 COLDSTART_SMOKE=1 python3 v2/run_deep.py abigru 0   # live training demo: 3 short epochs (~1 min), writes only to the system temp folder
@@ -1415,7 +1440,7 @@ To **use the saved models without training**, only `python3 v2/data.py` (3 s) is
 * `v2/cache/matrices.npz` with arrays `cnt, cost, fids, role, hour_rate, fn_hour_rate, meta, meta_cols`; roles: 385 normal, 96 holdout, 46 low-history.
 * Frame sizes: train 2,110,176; val_main 372,384; test_main 496,512; val_hold 82,944; test_hold 110,592.
 * `final_test_table.txt`: XGBoost and neural F1 ≈ 0.941–0.943, best rule 0.919 (small variation with seeds and hardware is expected).
-* `prewarm_sim.md`: about 67% of cold starts avoided for the models at their thresholds, 64.4% for the 7-day rule, 68.8% for keep-alive 60 min; `figures/fig7_prewarm_tradeoff.png`.
+* `prewarm_sim.md`: about 67% of cold starts avoided for the models at their thresholds, 64.4% for the 7-day rule, 68.8% for keep-alive 60 min, 70.1% for the hybrid histogram (7,263 idle container-hours); `figures/fig7_prewarm_tradeoff.png`.
 * `extra_eval.md`, `calibration.md`, `robustness.md` with the numbers in Section 8.12.
 
 ## 13.7 Testing instructions
@@ -1486,9 +1511,9 @@ Notes: the checkpoints load on CPU by default. `run_deep.py` picks the device au
 
 (Same as Section 3.2; reproduced in compact form.)
 ```
-CSV (31 days) → data.py → matrices.npz → features.py → frames.py
+CSV (31 days) → data.py (per-day aggregates) → matrices.npz → features.py → frames.py
       → [Rules | XGBoost ×4 | MLP/GRU/BiGRU/ABiGRU] → preds_*.npz → evalx/report → benchmark tables
-      preds_*.npz + thresholds → prewarm_sim.py (pre-warming simulator) → prewarm_sim.md, fig7
+      preds_*.npz + thresholds (+ hh_policy.py baseline) → prewarm_sim.py (pre-warming simulator) → prewarm_sim.md, fig7
       preds + saved models → extra_eval.py, calibration.py;   cache → robustness.py
 ```
 
@@ -1540,6 +1565,7 @@ Evaluation tools (not models):
 | Dataset | Purpose | Used |
 |---|---|---|
 | Huawei Region 5 cold starts (31 days) | Train/validate/test everything | Yes |
+| Huawei Regions 1–4 cold starts | Possible replication (loader ready) | No |
 | AWS data of the reference paper | Paper's own evaluation | No (unavailable) |
 | Azure dataset | Requested but absent | No |
 | Huawei requests / time-series / trigger tables | Possible future invocation information | No (not downloaded) |
@@ -1568,6 +1594,8 @@ Evaluation tools (not models):
 
 | Evaluation | Status |
 |---|---|
+| Hybrid-histogram baseline | Done (adapted; `prewarm_sim.md`) |
+| Other Huawei regions | Code ready, not run |
 | Slice confusion matrices, train-set metrics | Done (`extra_eval.md`) |
 | Paired significance tests | Done |
 | Calibration | Done (`calibration.md`) |
@@ -1582,4 +1610,4 @@ Evaluation tools (not models):
 
 ## 14.9 One-paragraph summary
 
-We built a leakage-safe pipeline that forecasts, for each serverless function and each 5-minute bucket, whether a cold start will occur, using the Huawei Cloud Region 5 trace. Daily and weekly repetition of cold starts explains most of the signal: a rule such as "event in this slot on most of the last seven days" already reaches F1 0.919. XGBoost and four neural models (MLP, GRU, BiGRU, ABiGRU) reach F1 about 0.942–0.943 and are statistically indistinguishable from each other, so a sequence architecture adds nothing measurable beyond the engineered features. The models are independent; there is no ensemble. Rare reactivation events are ranked better by learned models but not clearly better at the F1 operating point, and cold starts for brand-new functions with no history remain unpredictable from hardware and pool context. A pre-warming simulator shows the practical value: acting on the models' predictions avoids about 67% of cold starts with 6–7% wasted containers, close to what a 60-minute keep-alive achieves but with about 20 times fewer idle container-hours, and 2–3 points better than the best rule. The conclusions hold under paired significance tests, three rolling test windows and an XGBoost tuning study, and the models' probabilities are well calibrated. The evidence supports a rigorous benchmark paper with an operational evaluation and a clear negative result; it does not support a claim of a new best architecture.
+We built a leakage-safe pipeline that forecasts, for each serverless function and each 5-minute bucket, whether a cold start will occur, using the Huawei Cloud Region 5 trace. Daily and weekly repetition of cold starts explains most of the signal: a rule such as "event in this slot on most of the last seven days" already reaches F1 0.919. XGBoost and four neural models (MLP, GRU, BiGRU, ABiGRU) reach F1 about 0.942–0.943 and are statistically indistinguishable from each other, so a sequence architecture adds nothing measurable beyond the engineered features. The models are independent; there is no ensemble. Rare reactivation events are ranked better by learned models but not clearly better at the F1 operating point, and cold starts for brand-new functions with no history remain unpredictable from hardware and pool context. A pre-warming simulator shows the practical value: acting on the models' predictions avoids about 67% of cold starts with 6–7% wasted containers, close to what a 60-minute keep-alive or the Azure hybrid-histogram policy achieves (69–70%) but with about 20–25 times fewer idle container-hours, and 2–3 points better than the best rule. The conclusions hold under paired significance tests, three rolling test windows and an XGBoost tuning study, and the models' probabilities are well calibrated. The evidence supports a rigorous benchmark paper with an operational evaluation and a clear negative result; it does not support a claim of a new best architecture.

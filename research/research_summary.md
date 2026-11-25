@@ -1,3 +1,5 @@
+> **Historical (v1 plan).** This summary describes the archived v1 design (12-bucket window, six models). The current pipeline is `v2/` (57 features, 24×7 sequence window, rules, XGBoost, MLP/GRU/BiGRU/ABiGRU, pre-warming simulator); see [`../docs/PROJECT_DOCUMENTATION.md`](../docs/PROJECT_DOCUMENTATION.md) and [`../README.md`](../README.md).
+
 # Research Summary: Cold Start Prediction for Serverless Computing
 
 ## Project Overview
